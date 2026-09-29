@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Noto Sans TC', sans-serif;
+  background-color: #fdfbf7;
+  color: #333;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+.btn-primary {
+  @apply bg-amber-700 text-white px-6 py-2 rounded-lg hover:bg-amber-800 transition-colors duration-200;
+}
+
+.btn-secondary {
+  @apply bg-white text-amber-700 border border-amber-700 px-6 py-2 rounded-lg hover:bg-amber-50 transition-colors duration-200;
+}
+
+.section-title {
+  @apply text-3xl font-bold text-center mb-8 text-amber-900;
+}
+
+.admin-content-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.admin-content-scroll::-webkit-scrollbar {
+  display: none;
+}

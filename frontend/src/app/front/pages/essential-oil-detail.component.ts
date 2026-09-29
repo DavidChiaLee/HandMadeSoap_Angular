@@ -1,0 +1,77 @@
+import { Component, OnInit } from '@angular/core';
+import { ActivatedRoute, RouterLink } from '@angular/router';
+import { CommonModule } from '@angular/common';
+import { ApiService } from '../../shared/services/api.service';
+import { EssentialOil } from '../../shared/models/essential-oil.model';
+
+@Component({
+  selector: 'app-essential-oil-detail',
+  standalone: true,
+  imports: [CommonModule, RouterLink],
+  template: `
+    <div class="max-w-7xl mx-auto px-4 py-8" *ngIf="essentialOil">
+      <div class="bg-white rounded-xl shadow-md overflow-hidden">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 p-6">
+          <div class="bg-amber-100 rounded-xl overflow-hidden">
+            <img [src]="essentialOil.images && essentialOil.images.length > 0 ? ('http://localhost:8080/uploads/' + essentialOil.images[0].imagePath) : 'https://via.placeholder.com/600x400'" [alt]="essentialOil.name" class="w-full h-full object-cover aspect-square">
+          </div>
+
+          <div>
+            <h1 class="text-3xl font-bold text-amber-900 mb-4">{{ essentialOil.name }}</h1>
+            <p class="text-gray-600 mb-6 text-lg">{{ essentialOil.scentNotes }}</p>
+
+            <div class="border-t pt-4 mb-6">
+              <h3 class="font-semibold text-amber-900 mb-2">功效</h3>
+              <p class="text-gray-600">{{ essentialOil.benefits }}</p>
+            </div>
+
+            <div class="border-t pt-4 mb-6">
+              <h3 class="font-semibold text-amber-900 mb-2">注意事項</h3>
+              <p class="text-gray-600">{{ essentialOil.precautions }}</p>
+            </div>
+
+            <a routerLink="/essential-oils" class="btn-secondary">返回列表</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="max-w-7xl mx-auto px-4 py-8" *ngIf="!essentialOil">
+      <div class="text-center py-12">
+        <p class="text-gray-500">載入中...</p>
+      </div>
+    </div>
+  `
+})
+export class EssentialOilDetailComponent implements OnInit {
+  essentialOil: EssentialOil | null = null;
+
+  constructor(
+    private route: ActivatedRoute,
+    private apiService: ApiService
+  ) {}
+
+  ngOnInit(): void {
+    const id = this.route.snapshot.paramMap.get('id');
+    if (id) {
+      this.apiService.get<EssentialOil>(`essential-oils/${id}`).subscribe({
+        next: (data) => this.essentialOil = data,
+        error: () => this.essentialOil = this.getMockEssentialOil()
+      });
+    }
+  }
+
+  private getMockEssentialOil(): EssentialOil {
+    return {
+      id: 1,
+      name: '薰衣草精油',
+      scentNotes: '法國薰衣草精油，採用水蒸餾法萃取，香氣溫和舒緩',
+      benefits: '舒緩放鬆、幫助入睡、撫平情緒、輕微抗菌',
+      precautions: '孕婦及低血壓患者請諮詢醫師後使用',
+      isActive: true,
+      images: [],
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+  }
+}

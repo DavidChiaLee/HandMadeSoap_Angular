@@ -1,0 +1,48 @@
+.env
+.env.local
+.env.*
+!.env.example
+
+# --- 機密與資料庫備份（絕對不可進版控）---
+# backup 服務每 5 分鐘輸出的即時備份，內含 admins 密碼雜湊與 contacts 客戶個資
+# 用 /* 而非 / 結尾，才能用 ! 保留 .gitkeep（父目錄被排除時無法再 included 子檔）
+mysql/backup/*
+!mysql/backup/.gitkeep
+mysql/init/05-latest-backup.sql
+mysql/**/*backup*.sql
+*.sql.bak
+mysqldump/
+
+# --- 本地環境覆寫 ---
+# 注意：application.properties 是 Spring Boot 的唯一設定檔，必須進版控，
+#       裡面只准寫 ${ENV_VAR} 引用，不准寫機密預設值。機密放這裡或 .env。
+application-local.properties
+application-*.local.yml
+
+node_modules/
+dist/
+build/
+target/
+uploads/*
+!uploads/.gitkeep
+.mysql-data/
+backups/*
+!backups/.gitkeep
+.vscode/
+.idea/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+Thumbs.db
+.codegraph
+.kilo
+
+# --- 建置產物與快取 ---
+.angular/
+out-tsc/
+coverage/
+/backend/app.jar
+backend/*.jar
+

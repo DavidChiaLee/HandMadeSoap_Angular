@@ -1,0 +1,83 @@
+version: "3.8"
+
+services:
+  nginx:
+    build: ./frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend
+    networks:
+      - handsoap-net
+
+  backend:
+    build: ./backend
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/handsoap?useSSL=false&serverTimezone=Asia/Taipei&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=${DB_USER}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASS}
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=none
+      - JWT_SECRET=${JWT_SECRET}
+      - FILE_UPLOAD_DIR=/app/uploads
+    volumes:
+      - ./uploads:/app/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - handsoap-net
+
+  mysql:
+    image: mysql:8.0
+    ports:
+      - "3307:3306"
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASS}
+      - MYSQL_DATABASE=handsoap
+      - MYSQL_USER=${DB_USER}
+      - MYSQL_PASSWORD=${DB_PASS}
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d:ro
+      # 備份目錄唯讀掛入，供 05-restore-seed.sh 在全新初始化時還原本機內容
+      # （此目錄已被 .gitignore 排除，不會進版控）
+      - ./mysql/backup:/seed:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - handsoap-net
+
+  backup:
+    image: mysql:8.0
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      - MYSQL_HOST=mysql
+      - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASS}
+      - BACKUP_INTERVAL=300
+      - BACKUP_RETRY=10
+    volumes:
+      - ./mysql/backup:/backup
+      - ./backups:/backups
+      - ./uploads:/uploads:ro
+      - ./mysql/backup-loop.sh:/backup-loop.sh:ro
+    entrypoint: ["/bin/sh", "/backup-loop.sh"]
+    networks:
+      - handsoap-net
+
+volumes:
+  mysql-data:
+
+networks:
+  handsoap-net:
+    driver: bridge

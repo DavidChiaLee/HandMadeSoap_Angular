@@ -1,0 +1,2 @@
+# 此目錄用於 backup 服務的 mysqldump 輸出與手動備份。
+# 內容已被 .gitignore 排除（含密碼雜湊與客戶個資），僅保留此佔位檔讓 bind mount 有目錄可用。

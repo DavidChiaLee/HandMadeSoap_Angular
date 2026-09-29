@@ -1,0 +1,24 @@
+#!/bin/sh
+# 提交前自動掃描機密與個資，避免密碼雜湊／備份檔被推上 GitHub。
+# 啟用方式（每個 clone 需執行一次，git 不會複製 hooksPath 設定）：
+#     git config core.hooksPath .githooks
+# 緊急跳過：git commit --no-verify
+
+ROOT="$(git rev-parse --show-toplevel)"
+
+if command -v powershell >/dev/null 2>&1; then
+    PS_BIN="powershell"
+elif command -v pwsh >/dev/null 2>&1; then
+    PS_BIN="pwsh"
+else
+    echo "[pre-commit] 找不到 powershell / pwsh，跳過機密掃描（請手動確認後再提交）" >&2
+    exit 0
+fi
+
+echo "[pre-commit] 掃描機密與個資中 ..."
+if ! "$PS_BIN" -NoProfile -ExecutionPolicy Bypass -File "$ROOT/scripts/verify-no-secrets.ps1"; then
+    echo "[pre-commit] 已中止提交：請先加入 .gitignore 或改用環境變數。" >&2
+    exit 1
+fi
+
+exit 0

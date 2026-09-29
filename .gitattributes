@@ -1,0 +1,19 @@
+# 一律以 LF Commit，避免 Windows 端簽出時把 shell 腳本改成 CRLF，
+# 導致容器內 bash/sh 出現 "$'\r': command not found" 而讓 MySQL 初始化失敗。
+*.sh    text eol=lf
+*.sql   text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.conf  text eol=lf
+Dockerfile text eol=lf
+
+# 二進位檔不做換行轉換
+*.jpg   binary
+*.jpeg  binary
+*.png   binary
+*.gif   binary
+*.webp  binary
+*.ico   binary
+*.gz    binary
+*.tar   binary
+*.jar   binary
