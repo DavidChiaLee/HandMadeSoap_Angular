@@ -8,11 +8,40 @@ import { PLACEHOLDER_IMAGE } from '../constants';
  */
 export interface ImageRef {
   imagePath?: string | null;
+  sortOrder?: number | null;
+  isPrimary?: boolean | null;
 }
 
 /** 補上結尾斜線，避免 uploadUrl 漏寫斜線時拼出 /uploadsxxx.png */
 export function toBaseUrl(uploadUrl: string): string {
   return uploadUrl.endsWith('/') ? uploadUrl : `${uploadUrl}/`;
+}
+
+/** sortOrder 未設定時視為 0（與 DB 預設值、後台上傳參數一致） */
+function orderOf(image: ImageRef): number {
+  return image.sortOrder ?? 0;
+}
+
+/**
+ * 選出清單／詳情頁要顯示的圖片。
+ *
+ * 規則：`isPrimary` 優先，其次 `sortOrder` 升冪；兩者相同時維持原陣列順序
+ * （因此既有資料的行為與舊寫法 `images[0]` 相同）。回傳的是原陣列中的元素，
+ * 不會更動傳入的陣列。
+ *
+ * 註：後端 `findBySoapId` / `SoapResponse.fromEntity` 都未排序，資料庫層也沒有
+ * `@OrderBy`，所以「第一張＝主圖」只在這裡成立，前端是最後一道防線。
+ */
+export function pickPrimaryImage(images?: ReadonlyArray<ImageRef> | null): ImageRef | null {
+  if (!images || images.length === 0) {
+    return null;
+  }
+  return images.reduce((best, current) => {
+    if (!!current.isPrimary !== !!best.isPrimary) {
+      return current.isPrimary ? current : best;
+    }
+    return orderOf(current) < orderOf(best) ? current : best;
+  });
 }
 
 /**
@@ -47,9 +76,8 @@ export class FileUrlService {
     return `${this.baseUrl}${path.replace(/^\/+/, '')}`;
   }
 
-  /** 取 images 陣列第一張圖的 URL；沒有圖片時退回佔位圖 */
+  /** 取主圖 URL（isPrimary → sortOrder）；沒有圖片時退回佔位圖 */
   primaryUrl(images?: ReadonlyArray<ImageRef> | null): string {
-    const first = images && images.length > 0 ? images[0] : null;
-    return this.url(first?.imagePath);
+    return this.url(pickPrimaryImage(images)?.imagePath);
   }
 }

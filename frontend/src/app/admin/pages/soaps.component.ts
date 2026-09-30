@@ -50,7 +50,7 @@ import { MAX_UPLOAD_SIZE, UPLOAD_SIZE_ERROR_MSG } from '../../shared/constants';
             <tr *ngFor="let soap of soaps">
               <td class="px-6 py-4">
                 <div class="w-16 h-16 bg-amber-100 rounded-lg overflow-hidden">
-                  <img [src]="fileUrl(soap.images)" class="w-full h-full object-cover">
+                  <img [src]="fileUrl(soap.images)" class="w-full h-full object-cover" loading="lazy">
                 </div>
               </td>
               <td class="px-6 py-4 text-sm text-gray-900">{{ soap.name }}</td>

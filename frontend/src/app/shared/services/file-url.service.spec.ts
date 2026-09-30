@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { environment } from '../../../environments/environment';
 import { PLACEHOLDER_IMAGE } from '../constants';
-import { FileUrlService, toBaseUrl } from './file-url.service';
+import { FileUrlService, toBaseUrl, pickPrimaryImage } from './file-url.service';
 
 describe('FileUrlService', () => {
   let service: FileUrlService;
@@ -65,6 +65,56 @@ describe('FileUrlService', () => {
 
     it('已有結尾斜線時不應重複補', () => {
       expect(toBaseUrl('/uploads/')).toBe('/uploads/');
+    });
+  });
+
+  describe('pickPrimaryImage / primaryUrl 主圖選擇', () => {
+    it('應優先取 isPrimary 為 true 的圖片，而非陣列第一張', () => {
+      const images = [
+        { imagePath: 'soaps/1.png', sortOrder: 1, isPrimary: false },
+        { imagePath: 'soaps/2.png', sortOrder: 9, isPrimary: true }
+      ];
+      expect(pickPrimaryImage(images)?.imagePath).toBe('soaps/2.png');
+      expect(service.primaryUrl(images)).toBe(`${base}soaps/2.png`);
+    });
+
+    it('都沒有 isPrimary 時應取 sortOrder 最小者', () => {
+      const images = [
+        { imagePath: 'soaps/1.png', sortOrder: 5 },
+        { imagePath: 'soaps/2.png', sortOrder: 1 }
+      ];
+      expect(service.primaryUrl(images)).toBe(`${base}soaps/2.png`);
+    });
+
+    it('isPrimary 與 sortOrder 都相同時應維持原順序（與舊行為 images[0] 一致）', () => {
+      const images = [
+        { imagePath: 'soaps/1.png', sortOrder: 0, isPrimary: true },
+        { imagePath: 'soaps/2.png', sortOrder: 0, isPrimary: true }
+      ];
+      expect(service.primaryUrl(images)).toBe(`${base}soaps/1.png`);
+    });
+
+    it('sortOrder 未設定時應視為 0', () => {
+      const images = [
+        { imagePath: 'soaps/1.png' },
+        { imagePath: 'soaps/2.png', sortOrder: 3 }
+      ];
+      expect(service.primaryUrl(images)).toBe(`${base}soaps/1.png`);
+    });
+
+    it('不應更動傳入的陣列', () => {
+      const images = [
+        { imagePath: 'soaps/1.png', sortOrder: 5 },
+        { imagePath: 'soaps/2.png', sortOrder: 1 }
+      ];
+      service.primaryUrl(images);
+      expect(images.map(i => i.imagePath)).toEqual(['soaps/1.png', 'soaps/2.png']);
+    });
+
+    it('空陣列或 null 時應回傳 null / 佔位圖', () => {
+      expect(pickPrimaryImage([])).toBeNull();
+      expect(pickPrimaryImage(null)).toBeNull();
+      expect(service.primaryUrl([])).toBe(PLACEHOLDER_IMAGE);
     });
   });
 });

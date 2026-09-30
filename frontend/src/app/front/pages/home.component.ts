@@ -30,7 +30,7 @@ import { Soap } from '../../shared/models/soap.model';
           <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             <div *ngFor="let soap of featuredSoaps" class="bg-amber-50 rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-shadow">
               <div class="h-48 bg-amber-200 flex items-center justify-center">
-                <img [src]="fileUrl(soap.images)" [alt]="soap.name" class="w-full h-full object-cover">
+                <img [src]="fileUrl(soap.images)" [alt]="soap.name" class="w-full h-full object-cover" loading="lazy">
               </div>
               <div class="p-6">
                 <h3 class="text-xl font-bold text-amber-900 mb-2">{{ soap.name }}</h3>

@@ -45,8 +45,7 @@ import { MAX_UPLOAD_SIZE, UPLOAD_SIZE_ERROR_MSG } from '../../shared/constants';
             <tr *ngFor="let oil of oils">
               <td class="px-6 py-4">
                 <div class="w-16 h-16 bg-amber-100 rounded-lg overflow-hidden flex items-center justify-center">
-                  <img *ngIf="oil.images && oil.images.length > 0" [src]="fileUrl(oil.images)" class="w-full h-full object-cover" onerror="this.style.display='none'">
-                  <span *ngIf="!oil.images || oil.images.length === 0" class="text-xs text-gray-400">無圖片</span>
+                  <img [src]="fileUrl(oil.images)" class="w-full h-full object-cover" loading="lazy">
                 </div>
               </td>
               <td class="px-6 py-4 text-sm text-gray-900">{{ oil.name }}</td>

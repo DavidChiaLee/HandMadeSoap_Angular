@@ -17,7 +17,7 @@ import { EssentialOil } from '../../shared/models/essential-oil.model';
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         <div *ngFor="let eo of essentialOils" class="bg-white rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-shadow">
           <div class="h-48 bg-amber-100 flex items-center justify-center">
-            <img [src]="fileUrl(eo.images)" [alt]="eo.name" class="w-full h-full object-cover">
+            <img [src]="fileUrl(eo.images)" [alt]="eo.name" class="w-full h-full object-cover" loading="lazy">
           </div>
           <div class="p-6">
             <h3 class="text-xl font-bold text-amber-900 mb-2">{{ eo.name }}</h3>
