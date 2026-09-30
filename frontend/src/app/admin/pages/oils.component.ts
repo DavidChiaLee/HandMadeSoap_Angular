@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpParams } from '@angular/common/http';
 import { ApiService } from '../../shared/services/api.service';
+import { FileUrlService, ImageRef } from '../../shared/services/file-url.service';
 import { Oil } from '../../shared/models/oil.model';
 import { MAX_UPLOAD_SIZE, UPLOAD_SIZE_ERROR_MSG } from '../../shared/constants';
 
@@ -44,7 +45,7 @@ import { MAX_UPLOAD_SIZE, UPLOAD_SIZE_ERROR_MSG } from '../../shared/constants';
             <tr *ngFor="let oil of oils">
               <td class="px-6 py-4">
                 <div class="w-16 h-16 bg-amber-100 rounded-lg overflow-hidden flex items-center justify-center">
-                  <img *ngIf="oil.images && oil.images.length > 0" [src]="'http://localhost:8080/uploads/' + oil.images[0].imagePath" class="w-full h-full object-cover" onerror="this.style.display='none'">
+                  <img *ngIf="oil.images && oil.images.length > 0" [src]="fileUrl(oil.images)" class="w-full h-full object-cover" onerror="this.style.display='none'">
                   <span *ngIf="!oil.images || oil.images.length === 0" class="text-xs text-gray-400">無圖片</span>
                 </div>
               </td>
@@ -144,7 +145,16 @@ export class OilsComponent implements OnInit, OnDestroy {
   private scrollContainer: HTMLElement | null = null;
   private scrollListener = () => this.onScroll();
 
-  constructor(private apiService: ApiService, private el: ElementRef) {}
+  constructor(
+    private apiService: ApiService,
+    private el: ElementRef,
+    private fileUrlService: FileUrlService
+  ) {}
+
+  /** 圖片 URL 統一出口：無圖時退回本機佔位圖（見 FileUrlService） */
+  fileUrl(images?: ReadonlyArray<ImageRef> | null): string {
+    return this.fileUrlService.primaryUrl(images);
+  }
 
   ngOnInit(): void {
     this.loadOils();

@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpParams } from '@angular/common/http';
 import { ApiService } from '../../shared/services/api.service';
+import { FileUrlService, ImageRef } from '../../shared/services/file-url.service';
 import { Soap } from '../../shared/models/soap.model';
 import { Oil } from '../../shared/models/oil.model';
 import { EssentialOil } from '../../shared/models/essential-oil.model';
@@ -49,7 +50,7 @@ import { MAX_UPLOAD_SIZE, UPLOAD_SIZE_ERROR_MSG } from '../../shared/constants';
             <tr *ngFor="let soap of soaps">
               <td class="px-6 py-4">
                 <div class="w-16 h-16 bg-amber-100 rounded-lg overflow-hidden">
-                  <img [src]="soap.images && soap.images.length > 0 ? ('http://localhost:8080/uploads/' + soap.images[0].imagePath) : 'https://via.placeholder.com/64'" class="w-full h-full object-cover">
+                  <img [src]="fileUrl(soap.images)" class="w-full h-full object-cover">
                 </div>
               </td>
               <td class="px-6 py-4 text-sm text-gray-900">{{ soap.name }}</td>
@@ -223,7 +224,16 @@ export class SoapsComponent implements OnInit, OnDestroy {
   private scrollContainer: HTMLElement | null = null;
   private scrollListener = () => this.onScroll();
 
-  constructor(private apiService: ApiService, private el: ElementRef) {}
+  constructor(
+    private apiService: ApiService,
+    private el: ElementRef,
+    private fileUrlService: FileUrlService
+  ) {}
+
+  /** 圖片 URL 統一出口：無圖時退回本機佔位圖（見 FileUrlService） */
+  fileUrl(images?: ReadonlyArray<ImageRef> | null): string {
+    return this.fileUrlService.primaryUrl(images);
+  }
 
   ngOnInit(): void {
     this.loadCategories();

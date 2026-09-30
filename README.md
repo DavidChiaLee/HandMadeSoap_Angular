@@ -274,6 +274,26 @@ npm install
 npm start
 ```
 
+#### 前端 API／圖片基址
+
+前端有兩份環境設定，由 `frontend/angular.json` 的 `configurations.production.fileReplacements` 在建置期切換：
+
+| 檔案 | 使用時機 | `apiUrl` | `uploadUrl` |
+| --- | --- | --- | --- |
+| `src/environments/environment.ts` | `npm start`（ng serve）、`npm test` | `http://localhost:8080/api/v1` | `http://localhost:8080/uploads/` |
+| `src/environments/environment.prod.ts` | `npm run build`（production） | `/api/v1` | `/uploads/` |
+
+- 正式版走**同源相對路徑**，由 nginx 反代 `/api/` 與 `/uploads/` 到 `backend:8080`，因此不受網域／連接埠影響，也不會有 mixed content。
+- 圖片網址只能透過 `FileUrlService` 產生（模板用 `[src]="fileUrl(images)"`），不要在模板硬編 `localhost:8080`；沒有圖片時會顯示 `src/assets/placeholder.svg`。
+- 只改 `environment.prod.ts` 不會有任何效果——它必須靠 `fileReplacements` 才會取代 `environment.ts`。
+- 正式版 API 是相對路徑，所以 `ng serve --configuration production` 會失效（相對路徑指向 4200）；要驗證正式版請用 `docker compose up --build`。
+- 產物檢查（CI 可用）：
+
+```powershell
+cd frontend; npm run build; cd ..
+pwsh ./scripts/verify-frontend-dist.ps1
+```
+
 ## 環境變數說明
 
 | 變數                | 使用情境                     | 說明               | 預設值                                      |

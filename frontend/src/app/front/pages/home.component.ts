@@ -3,6 +3,7 @@ import { RouterLink } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { HttpParams } from '@angular/common/http';
 import { ApiService } from '../../shared/services/api.service';
+import { FileUrlService, ImageRef } from '../../shared/services/file-url.service';
 import { Category } from '../../shared/models/category.model';
 import { Soap } from '../../shared/models/soap.model';
 
@@ -29,7 +30,7 @@ import { Soap } from '../../shared/models/soap.model';
           <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             <div *ngFor="let soap of featuredSoaps" class="bg-amber-50 rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-shadow">
               <div class="h-48 bg-amber-200 flex items-center justify-center">
-                <img [src]="soap.images && soap.images.length > 0 ? ('http://localhost:8080/uploads/' + soap.images[0].imagePath) : 'https://via.placeholder.com/300x200'" [alt]="soap.name" class="w-full h-full object-cover">
+                <img [src]="fileUrl(soap.images)" [alt]="soap.name" class="w-full h-full object-cover">
               </div>
               <div class="p-6">
                 <h3 class="text-xl font-bold text-amber-900 mb-2">{{ soap.name }}</h3>
@@ -65,7 +66,15 @@ export class HomeComponent implements OnInit {
 
   categories: Category[] = [];
 
-  constructor(private apiService: ApiService) {}
+  constructor(
+    private apiService: ApiService,
+    private fileUrlService: FileUrlService
+  ) {}
+
+  /** 圖片 URL 統一出口：無圖時退回本機佔位圖（見 FileUrlService） */
+  fileUrl(images?: ReadonlyArray<ImageRef> | null): string {
+    return this.fileUrlService.primaryUrl(images);
+  }
 
   ngOnInit(): void {
     this.loadFeaturedSoaps();

@@ -3,6 +3,7 @@ import { RouterLink } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { HttpParams } from '@angular/common/http';
 import { ApiService } from '../../shared/services/api.service';
+import { FileUrlService, ImageRef } from '../../shared/services/file-url.service';
 import { EssentialOil } from '../../shared/models/essential-oil.model';
 
 @Component({
@@ -16,7 +17,7 @@ import { EssentialOil } from '../../shared/models/essential-oil.model';
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         <div *ngFor="let eo of essentialOils" class="bg-white rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-shadow">
           <div class="h-48 bg-amber-100 flex items-center justify-center">
-            <img [src]="eo.images && eo.images.length > 0 ? ('http://localhost:8080/uploads/' + eo.images[0].imagePath) : 'https://via.placeholder.com/300x200'" [alt]="eo.name" class="w-full h-full object-cover">
+            <img [src]="fileUrl(eo.images)" [alt]="eo.name" class="w-full h-full object-cover">
           </div>
           <div class="p-6">
             <h3 class="text-xl font-bold text-amber-900 mb-2">{{ eo.name }}</h3>
@@ -47,7 +48,15 @@ export class EssentialOilsComponent implements OnInit {
   pageSize = 8;
   totalPages = 0;
 
-  constructor(private apiService: ApiService) {}
+  constructor(
+    private apiService: ApiService,
+    private fileUrlService: FileUrlService
+  ) {}
+
+  /** 圖片 URL 統一出口：無圖時退回本機佔位圖（見 FileUrlService） */
+  fileUrl(images?: ReadonlyArray<ImageRef> | null): string {
+    return this.fileUrlService.primaryUrl(images);
+  }
 
   ngOnInit(): void {
     this.loadEssentialOils();

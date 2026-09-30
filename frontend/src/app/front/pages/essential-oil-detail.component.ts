@@ -2,6 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { ApiService } from '../../shared/services/api.service';
+import { FileUrlService, ImageRef } from '../../shared/services/file-url.service';
 import { EssentialOil } from '../../shared/models/essential-oil.model';
 
 @Component({
@@ -13,7 +14,7 @@ import { EssentialOil } from '../../shared/models/essential-oil.model';
       <div class="bg-white rounded-xl shadow-md overflow-hidden">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-8 p-6">
           <div class="bg-amber-100 rounded-xl overflow-hidden">
-            <img [src]="essentialOil.images && essentialOil.images.length > 0 ? ('http://localhost:8080/uploads/' + essentialOil.images[0].imagePath) : 'https://via.placeholder.com/600x400'" [alt]="essentialOil.name" class="w-full h-full object-cover aspect-square">
+            <img [src]="fileUrl(essentialOil.images)" [alt]="essentialOil.name" class="w-full h-full object-cover aspect-square">
           </div>
 
           <div>
@@ -48,8 +49,14 @@ export class EssentialOilDetailComponent implements OnInit {
 
   constructor(
     private route: ActivatedRoute,
-    private apiService: ApiService
+    private apiService: ApiService,
+    private fileUrlService: FileUrlService
   ) {}
+
+  /** 圖片 URL 統一出口：無圖時退回本機佔位圖（見 FileUrlService） */
+  fileUrl(images?: ReadonlyArray<ImageRef> | null): string {
+    return this.fileUrlService.primaryUrl(images);
+  }
 
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id');
