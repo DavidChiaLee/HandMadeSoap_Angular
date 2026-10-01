@@ -4,7 +4,6 @@ import com.handsoap.config.JwtAuthFilter;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -48,8 +47,15 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/oils/**").permitAll()
                 .requestMatchers("/api/v1/essential-oils/**").permitAll()
                 .requestMatchers("/api/v1/contacts/**").permitAll()
-                // 首次啟動（admins 表為空）允許建立第一個管理員；之後由服務層檢查是否為 ADMIN
-                .requestMatchers(HttpMethod.POST, "/api/v1/admin/admins").permitAll()
+                // 上傳圖片由前端以 <img src="/uploads/..."> 直接載入，不帶 JWT。
+                // 這裡必須顯式放行：下方 anyRequest() 一旦依 review H7 改為
+                // authenticated()，漏掉這行會讓正式站「所有圖片變 401」，
+                // 而且前端只會顯示 placeholder、不會報錯，極難察覺。
+                .requestMatchers("/uploads/**", "/error").permitAll()
+                // 首位管理員不再透過 HTTP 建立：原本這裡對 POST /api/v1/admin/admins
+                // permitAll，讓「部署後、owner 建立帳號前」 anyone 都能搶註 ADMIN（review C4）。
+                // 已改由 AdminBootstrapRunner 於啟動時建立，且由 /api/v1/admin/**
+                // 的 hasRole("ADMIN") 一律把關。
                 .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 .anyRequest().permitAll()

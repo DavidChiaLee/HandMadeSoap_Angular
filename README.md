@@ -121,20 +121,37 @@ npm start
 
 ### 4. 初始化後台管理員
 
-首次啟動後，需要手動建立管理員帳號（`admins` 資料表預設為空）。有兩種方式：
+> ⚠️ **安全性變更**：早期版本是「`admins` 資料表為空時，任何人都能匿名呼叫
+> `POST /api/v1/admin/admins` 建立第一個管理員」。這等於把「部署完成、owner 還沒建立
+> 帳號」的時間窗完全開放給公網，任何人都能搶先建立 `ADMIN` 帳號接管後台。
+> **該端點現已全面要求 ADMIN 權限**，首位管理員改由後端啟動時自動建立。
 
-**方式 A：透過 API（bootstrap，只適用於第一個管理員）**
+**方式 A：啟動時自動建立（建議）**
+
+在專案根目錄的 `.env` 設定（值可參考 `.env.example`）：
 
 ```bash
-# 等後端完成啟動（docker compose logs -f backend 看到 Started HandSoapApplication）再執行，
-# 否則 Nginx 會回 502 Bad Gateway
-curl -X POST http://localhost/api/v1/admin/admins \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin","email":"admin@example.com","role":"ADMIN"}'
+BOOTSTRAP_ENABLED=true
+BOOTSTRAP_ADMIN_USERNAME=admin
+BOOTSTRAP_ADMIN_PASSWORD=<請填一組夠強的密碼>
+BOOTSTRAP_ADMIN_EMAIL=admin@example.com
 ```
 
-> 此端點僅在 `admins` 表為空時可匿名呼叫（建立第一個管理員）；
-> 之後再新增管理員必須使用後台登入取得的 JWT（`Authorization: Bearer <token>`）。
+接著啟動：
+
+```bash
+docker compose up -d backend
+docker compose logs -f backend   # 看到 "[bootstrap] 已建立首位管理員" 即完成
+```
+
+完成後請務必：
+
+1. 登入後台（http://localhost/admin/login）並**立即更換密碼**
+2. 把 `.env` 的 `BOOTSTRAP_ENABLED` 改回 `false`
+
+> 後端啟動時會檢查 `admins` 表：**已有任何帳號就會跳過**，絕不會覆蓋既有管理員。
+> 因此本機若有 `mysql/backup/` 備份（`05-restore-seed.sh` 會自動還原），bootstrap 會直接跳過，
+> 此時不需要設定上面三個變數。
 
 **方式 B：直接連線 MySQL 插入**
 

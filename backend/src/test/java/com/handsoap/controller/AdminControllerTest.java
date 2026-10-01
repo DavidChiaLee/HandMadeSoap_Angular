@@ -15,13 +15,20 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/**
+ * AdminController 的授權行為。
+ *
+ * <p>review C4 修正後，{@code POST /api/v1/admin/admins} 不再 permitAll ——
+ * 首位管理員改由啟動時的 {@code AdminBootstrapRunner} 建立。
+ * 這裡驗證「未登入一律被擋」，防止日後有人又把 permitAll 加回去。</p>
+ */
 @WebMvcTest(AdminController.class)
 @Import({SecurityConfig.class, ControllerTestSupport.class})
 class AdminControllerTest {
@@ -33,33 +40,42 @@ class AdminControllerTest {
     private AdminService adminService;
 
     @Test
-    @DisplayName("未登入（bootstrap）建立管理員時應傳入 isAdmin=false")
-    void shouldPassIsAdminFalseWhenAnonymous() throws Exception {
-        given(adminService.createAdmin(any(CreateAdminRequest.class), eq(false)))
-                .willReturn(AdminResponse.builder().id(1L).username("first").role("ADMIN").build());
-
+    @DisplayName("未登入不得建立管理員（bootstrap 端點已移除，應回 401）")
+    void shouldRejectAnonymousCreateAdmin() throws Exception {
         mockMvc.perform(post("/api/v1/admin/admins")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"username\":\"first\",\"password\":\"secret\",\"email\":\"a@b.com\"}"))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.username").value("first"));
+                .andExpect(status().isUnauthorized());
 
-        verify(adminService).createAdmin(any(CreateAdminRequest.class), eq(false));
+        verify(adminService, never()).createAdmin(any());
     }
 
     @Test
-    @DisplayName("以 ADMIN 身分建立管理員時應傳入 isAdmin=true")
+    @DisplayName("以 ADMIN 身分建立管理員應成功")
     @WithMockUser(roles = "ADMIN")
-    void shouldPassIsAdminTrueWhenAdmin() throws Exception {
-        given(adminService.createAdmin(any(CreateAdminRequest.class), eq(true)))
+    void shouldCreateAdminWhenAuthenticatedAsAdmin() throws Exception {
+        given(adminService.createAdmin(any(CreateAdminRequest.class)))
                 .willReturn(AdminResponse.builder().id(2L).username("second").role("ADMIN").build());
 
         mockMvc.perform(post("/api/v1/admin/admins")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"username\":\"second\",\"password\":\"secret\",\"email\":\"c@d.com\"}"))
-                .andExpect(status().isCreated());
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.username").value("second"));
 
-        verify(adminService).createAdmin(any(CreateAdminRequest.class), eq(true));
+        verify(adminService).createAdmin(any(CreateAdminRequest.class));
+    }
+
+    @Test
+    @DisplayName("非 ADMIN 身分不得建立管理員（應回 403）")
+    @WithMockUser(roles = "USER")
+    void shouldRejectNonAdminRole() throws Exception {
+        mockMvc.perform(post("/api/v1/admin/admins")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"x\",\"password\":\"secret\",\"email\":\"x@y.com\"}"))
+                .andExpect(status().isForbidden());
+
+        verify(adminService, never()).createAdmin(any());
     }
 
     @Test

@@ -7,20 +7,17 @@ import com.handsoap.service.AdminService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Objects;
-
 /**
  * 管理員帳號管理。
  *
- * <p>POST /api/v1/admin/admins 在 admins 表為空時可用於初始化第一個管理員（bootstrap）；
- * 一旦已有管理員，僅允許 ADMIN 角色呼叫。</p>
+ * <p>權限由 SecurityConfig 的 {@code /api/v1/admin/**} → {@code hasRole("ADMIN")} 統一控管，
+ * Controller 不再做重複的身分判斷。首位管理員改由啟動時的
+ * {@link com.handsoap.config.AdminBootstrapRunner} 建立，不再透過 HTTP 匿名建立。</p>
  */
 @RestController
 @RequestMapping("/api/v1/admin/admins")
@@ -34,12 +31,7 @@ public class AdminController {
 
     @PostMapping
     public ResponseEntity<ApiResponse<AdminResponse>> createAdmin(@Valid @RequestBody CreateAdminRequest request) {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        boolean isAdmin = authentication != null
-                && authentication.getAuthorities().stream()
-                .anyMatch(authority -> Objects.equals(authority.getAuthority(), "ROLE_ADMIN"));
-
-        AdminResponse admin = adminService.createAdmin(request, isAdmin);
+        AdminResponse admin = adminService.createAdmin(request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Admin created successfully", admin));
     }

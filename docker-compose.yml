@@ -15,8 +15,10 @@ services:
 
   backend:
     build: ./backend
-    ports:
-      - "8080:8080"
+    # 刻意不發布對外埠：後端只透過 handsoap-net 內部通訊，對外一律走 nginx（80/443）。
+    # 若這裡保留 ports，後端 API（含 /api/v1/admin/**）會直接暴露在公網，
+    # 繞過 nginx 的 TLS 與任何存取控制，等同多開一個後門。
+    # 本機若要連後端，可改用：docker compose exec backend wget -qO- http://localhost:8080/actuator/health
     environment:
       - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/handsoap?useSSL=false&serverTimezone=Asia/Taipei&allowPublicKeyRetrieval=true
       - SPRING_DATASOURCE_USERNAME=${DB_USER}
@@ -24,6 +26,11 @@ services:
       - SPRING_JPA_HIBERNATE_DDL_AUTO=none
       - JWT_SECRET=${JWT_SECRET}
       - FILE_UPLOAD_DIR=/app/uploads
+      # 首位管理員 bootstrap（預設關閉；建立完成後請把 .env 的值設回 false）
+      - BOOTSTRAP_ENABLED=${BOOTSTRAP_ENABLED:-false}
+      - BOOTSTRAP_ADMIN_USERNAME=${BOOTSTRAP_ADMIN_USERNAME:-}
+      - BOOTSTRAP_ADMIN_PASSWORD=${BOOTSTRAP_ADMIN_PASSWORD:-}
+      - BOOTSTRAP_ADMIN_EMAIL=${BOOTSTRAP_ADMIN_EMAIL:-}
     volumes:
       - ./uploads:/app/uploads
     depends_on:

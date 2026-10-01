@@ -38,52 +38,12 @@ class AdminServiceTest {
     }
 
     @Test
-    @DisplayName("尚無任何管理員時可建立第一個管理員（bootstrap）")
-    void shouldAllowBootstrapWhenNoAdminExists() {
-        given(adminRepository.count()).willReturn(0L);
-        given(adminRepository.existsByUsername("first")).willReturn(false);
-        given(adminRepository.existsByEmail("first@example.com")).willReturn(false);
-        given(adminRepository.save(any(Admin.class))).willAnswer(inv -> withId(inv.getArgument(0), 1L));
-
-        var response = service.createAdmin(request("first", "first@example.com", "secret", null), false);
-
-        assertThat(response.getUsername()).isEqualTo("first");
-        assertThat(response.getRole()).isEqualTo("ADMIN");
-    }
-
-    @Test
-    @DisplayName("已有管理員且未以 ADMIN 身分登入時應拒絕建立")
-    void shouldRejectWhenAdminsExistAndNotAdmin() {
-        given(adminRepository.count()).willReturn(1L);
-
-        assertThatThrownBy(() -> service.createAdmin(
-                request("second", "second@example.com", "secret", null), false))
-                .isInstanceOf(BadRequestException.class)
-                .hasMessageContaining("already exist");
-
-        verify(adminRepository, never()).save(any(Admin.class));
-    }
-
-    @Test
-    @DisplayName("已有管理員但以 ADMIN 身分登入時可建立")
-    void shouldAllowWhenAdminAlreadyLoggedIn() {
-        given(adminRepository.count()).willReturn(3L);
-        given(adminRepository.existsByUsername("second")).willReturn(false);
-        given(adminRepository.existsByEmail("second@example.com")).willReturn(false);
-        given(adminRepository.save(any(Admin.class))).willAnswer(inv -> withId(inv.getArgument(0), 2L));
-
-        assertThat(service.createAdmin(request("second", "second@example.com", "secret", null), true))
-                .isNotNull();
-    }
-
-    @Test
     @DisplayName("username 重複時應拒絕")
     void shouldRejectDuplicateUsername() {
-        given(adminRepository.count()).willReturn(0L);
         given(adminRepository.existsByUsername("dup")).willReturn(true);
 
         assertThatThrownBy(() -> service.createAdmin(
-                request("dup", "dup@example.com", "secret", null), false))
+                request("dup", "dup@example.com", "secret", null)))
                 .isInstanceOf(BadRequestException.class)
                 .hasMessageContaining("Username already exists");
     }
@@ -91,12 +51,11 @@ class AdminServiceTest {
     @Test
     @DisplayName("email 重複時應拒絕")
     void shouldRejectDuplicateEmail() {
-        given(adminRepository.count()).willReturn(0L);
         given(adminRepository.existsByUsername("fresh")).willReturn(false);
         given(adminRepository.existsByEmail("dup@example.com")).willReturn(true);
 
         assertThatThrownBy(() -> service.createAdmin(
-                request("fresh", "dup@example.com", "secret", null), false))
+                request("fresh", "dup@example.com", "secret", null)))
                 .isInstanceOf(BadRequestException.class)
                 .hasMessageContaining("Email already exists");
     }
@@ -104,24 +63,22 @@ class AdminServiceTest {
     @Test
     @DisplayName("role 未指定時應預設為 ADMIN")
     void shouldDefaultRoleToAdmin() {
-        given(adminRepository.count()).willReturn(0L);
         given(adminRepository.existsByUsername("n")).willReturn(false);
         given(adminRepository.existsByEmail("n@example.com")).willReturn(false);
         given(adminRepository.save(any(Admin.class))).willAnswer(inv -> withId(inv.getArgument(0), 3L));
 
-        assertThat(service.createAdmin(request("n", "n@example.com", "secret", null), false).getRole())
+        assertThat(service.createAdmin(request("n", "n@example.com", "secret", null)).getRole())
                 .isEqualTo("ADMIN");
     }
 
     @Test
     @DisplayName("role 非 ADMIN 時應拒絕")
     void shouldRejectNonAdminRole() {
-        given(adminRepository.count()).willReturn(0L);
         given(adminRepository.existsByUsername("u")).willReturn(false);
         given(adminRepository.existsByEmail("u@example.com")).willReturn(false);
 
         assertThatThrownBy(() -> service.createAdmin(
-                request("u", "u@example.com", "secret", "USER"), false))
+                request("u", "u@example.com", "secret", "USER")))
                 .isInstanceOf(BadRequestException.class)
                 .hasMessageContaining("Role must be ADMIN");
     }
@@ -129,12 +86,11 @@ class AdminServiceTest {
     @Test
     @DisplayName("密碼應經過編碼後才寫入，且不得是明文")
     void shouldEncodePasswordBeforeSaving() {
-        given(adminRepository.count()).willReturn(0L);
         given(adminRepository.existsByUsername("enc")).willReturn(false);
         given(adminRepository.existsByEmail("enc@example.com")).willReturn(false);
         given(adminRepository.save(any(Admin.class))).willAnswer(inv -> withId(inv.getArgument(0), 4L));
 
-        service.createAdmin(request("enc", "enc@example.com", "plain-text-pwd", null), false);
+        service.createAdmin(request("enc", "enc@example.com", "plain-text-pwd", null));
 
         ArgumentCaptor<Admin> captor = ArgumentCaptor.forClass(Admin.class);
         verify(adminRepository).save(captor.capture());
@@ -145,17 +101,35 @@ class AdminServiceTest {
     @Test
     @DisplayName("username 與 email 應去除前後空白後儲存")
     void shouldTrimUsernameAndEmail() {
-        given(adminRepository.count()).willReturn(0L);
         given(adminRepository.existsByUsername(anyString())).willReturn(false);
         given(adminRepository.existsByEmail(anyString())).willReturn(false);
         given(adminRepository.save(any(Admin.class))).willAnswer(inv -> withId(inv.getArgument(0), 5L));
 
-        service.createAdmin(request("  spaced  ", "  spaced@example.com  ", "secret", null), false);
+        service.createAdmin(request("  spaced  ", "  spaced@example.com  ", "secret", null));
 
         ArgumentCaptor<Admin> captor = ArgumentCaptor.forClass(Admin.class);
         verify(adminRepository).save(captor.capture());
         assertThat(captor.getValue().getUsername()).isEqualTo("spaced");
         assertThat(captor.getValue().getEmail()).isEqualTo("spaced@example.com");
+    }
+
+    /**
+     * 守衛 review C4 的修正：授權已完全交給 SecurityConfig 的
+     * {@code hasRole("ADMIN")}，Service 層不再查詢 admins 表筆數。
+     *
+     * <p>舊版這裡會呼叫 {@code adminRepository.count()}，屬 TOCTOU 競態來源；
+     * 若未來有人把它加回來，這個測試會失敗。</p>
+     */
+    @Test
+    @DisplayName("建立管理員時不應再查詢 admins 表筆數（TOCTOU 來源已移除）")
+    void shouldNotQueryAdminCountWhenCreatingAdmin() {
+        given(adminRepository.existsByUsername("noCount")).willReturn(false);
+        given(adminRepository.existsByEmail("nocount@example.com")).willReturn(false);
+        given(adminRepository.save(any(Admin.class))).willAnswer(inv -> withId(inv.getArgument(0), 6L));
+
+        service.createAdmin(request("noCount", "nocount@example.com", "secret", null));
+
+        verify(adminRepository, never()).count();
     }
 
     private CreateAdminRequest request(String username, String email, String password, String role) {

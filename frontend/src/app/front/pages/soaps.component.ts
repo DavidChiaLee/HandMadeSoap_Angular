@@ -27,8 +27,8 @@ import { Soap } from '../../shared/models/soap.model';
             <h3 class="text-lg font-semibold text-amber-900 mt-6 mb-4">排序</h3>
             <select [(ngModel)]="sortBy" (change)="sortProducts()" class="w-full border border-gray-300 rounded-lg px-4 py-2">
               <option value="name">名稱</option>
-              <option value="price-low">價格低至高</option>
-              <option value="price-high">價格高至低</option>
+              <!-- <option value="price-low">價格低至高</option>
+              <option value="price-high">價格高至低</option> -->
             </select>
           </div>
         </aside>
@@ -43,7 +43,7 @@ import { Soap } from '../../shared/models/soap.model';
                 <h3 class="font-bold text-amber-900 mb-1">{{ soap.name }}</h3>
                 <p class="text-gray-600 text-sm mb-2 line-clamp-2">{{ soap.shortDescription }}</p>
                 <div class="flex items-center justify-between">
-                  <span class="text-amber-700 font-bold">\${{ soap.price }}</span>
+                  <!-- <span class="text-amber-700 font-bold">\${{ soap.price }}</span> -->
                   <a [routerLink]="['/soaps', soap.id]" class="text-sm text-amber-600 hover:text-amber-800">查看詳情</a>
                 </div>
               </div>

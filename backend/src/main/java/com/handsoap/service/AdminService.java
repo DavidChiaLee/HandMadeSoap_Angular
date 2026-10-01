@@ -24,21 +24,20 @@ public class AdminService {
     /**
      * 建立管理員帳號。
      *
-     * <p>首次啟動時（admins 表為空）任何人都可以建立第一個管理員作為 bootstrap；
-     * 一旦已有管理員，則必須由已登入的 ADMIN 才能再新增。</p>
+     * <p>呼叫端必須已是以 ADMIN 身分登入 —— 授權由 SecurityConfig 的
+     * {@code /api/v1/admin/**} → {@code hasRole("ADMIN")} 保證，Service 層不再重複判斷。</p>
+     *
+     * <p>首位管理員不走這裡，而是由啟動時的
+     * {@link com.handsoap.config.AdminBootstrapRunner} 建立。</p>
+     *
+     * <p>註：舊版這裡有 {@code adminRepository.count() > 0 && !isAdmin} 的檢查，
+     * 那是 TOCTOU 競態的根源（count 與 save 非原子），且該端點在 SecurityConfig
+     * 是 permitAll，等於把部署後的時間窗開放給公網搶註 ADMIN。兩者皆已移除。</p>
      *
      * @param request 建立管理員的請求
-     * @param isAdmin 目前是否已以 ADMIN 身分登入
      * @return 建立成功的管理員資料
      */
-    public AdminResponse createAdmin(CreateAdminRequest request, boolean isAdmin) {
-        long adminCount = adminRepository.count();
-        if (adminCount > 0 && !isAdmin) {
-            throw new BadRequestException(
-                    "Admins already exist. Please log in as an ADMIN to create additional administrators."
-            );
-        }
-
+    public AdminResponse createAdmin(CreateAdminRequest request) {
         if (adminRepository.existsByUsername(request.getUsername())) {
             throw new BadRequestException("Username already exists: " + request.getUsername());
         }
