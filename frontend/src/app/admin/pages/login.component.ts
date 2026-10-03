@@ -55,7 +55,22 @@ export class LoginComponent {
         this.router.navigate(['/admin/dashboard']);
       },
       error: (err) => {
-        this.errorMessage = err.error?.message || '登入失敗，請檢查您的帳號密碼';
+        // 429 = 嘗試過於頻繁（後端 LoginAttemptService 或 nginx limit_req 觸發）。
+        // 必須與「帳密錯誤」分開處理：此時使用者該等待而非重試，
+        // 若顯示「請檢查您的帳號密碼」會誘導使用者繼續重試，讓封鎖不斷延長。
+        //
+        // 同時後端會附上 Retry-After（秒），優先採用後端的訊息。
+        if (err?.status === 429) {
+          this.errorMessage =
+            err?.error?.message ||
+            (err?.headers?.get('Retry-After')
+              ? `嘗試過於頻繁，請於 ${err.headers.get('Retry-After')} 秒後再試`
+              : '嘗試過於頻繁，請稍後再試');
+          return;
+        }
+
+        // 其餘情況沿用後端訊息；拿不到時才退回通用提示。
+        this.errorMessage = err?.error?.message || '登入失敗，請檢查您的帳號密碼';
       }
     });
   }

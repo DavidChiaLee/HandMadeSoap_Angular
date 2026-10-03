@@ -6,6 +6,7 @@ import com.handsoap.service.AdminService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -20,9 +21,14 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.util.List;
+import java.util.UUID;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -41,7 +47,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import({SecurityConfig.class, ControllerTestSupport.class})
 class SecurityConfigTest {
 
-    private final SecurityConfig config = new SecurityConfig(mock(JwtAuthFilter.class));
+    private final SecurityConfig config =
+            new SecurityConfig(mock(JwtAuthFilter.class), "http://localhost:4200");
 
     @Autowired
     private MockMvc mockMvc;
@@ -56,18 +63,44 @@ class SecurityConfigTest {
         CorsConfiguration cors = resolveApiCors();
 
         assertThat(cors).isNotNull();
-        assertThat(cors.getAllowedOrigins()).containsExactly("*");
+        // review H4：由設定注入的白名單取代原本的萬用字元 "*"
+        assertThat(cors.getAllowedOrigins()).containsExactly("http://localhost:4200");
         assertThat(cors.getAllowedMethods())
                 .containsExactlyInAnyOrder("GET", "POST", "PUT", "DELETE", "OPTIONS");
         assertThat(cors.getAllowedHeaders()).containsExactly("*");
     }
 
+    /**
+     * 防止 H4 被無聲還原成萬用字元。
+     *
+     * <p>舊版斷言的是 {@code containsExactly("*")}，正是我們要移除的設定。
+     * 現在改成反向斷言：白名單絕不可包含 {@code *}。</p>
+     */
     @Test
-    @DisplayName("使用萬用 origin 時不應同時允許 credentials")
-    void shouldNotAllowCredentialsWithWildcardOrigin() {
+    @DisplayName("CORS 白名單不得包含萬用字元 *（review H4）")
+    void shouldNotAllowWildcardOrigin() {
         CorsConfiguration cors = resolveApiCors();
 
-        assertThat(Boolean.TRUE.equals(cors.getAllowCredentials())).isFalse();
+        assertThat(cors.getAllowedOrigins())
+                .as("萬用字元會讓任意網站都能跨站呼叫 API，等同 H4 未修正")
+                .doesNotContain("*");
+    }
+
+    /**
+     * {@code allowCredentials} 維持 false 是<b>刻意的</b>，不是疏忽。
+     *
+     * <p>本系統以 JWT 認證，token 走 {@code Authorization} 標頭，前端沒有使用
+     * {@code withCredentials}，因此不需要 cookie 型認證。若日後有人圖省事改成
+     * {@code true}，會與白名單模式產生預期外的行為，這裡釘住現況。</p>
+     */
+    @Test
+    @DisplayName("allowCredentials 應維持 false（JWT 走 Authorization 標頭，非 cookie 認證）")
+    void shouldNotAllowCredentials() {
+        CorsConfiguration cors = resolveApiCors();
+
+        assertThat(Boolean.TRUE.equals(cors.getAllowCredentials()))
+                .as("本系統不使用 cookie 認證，開啟 credentials 只會增加風險")
+                .isFalse();
     }
 
     /** SecurityConfig 宣告回傳 CorsConfigurationSource 介面，實際物件為 UrlBasedCorsConfigurationSource。 */
@@ -100,12 +133,13 @@ class SecurityConfigTest {
     }
 
     /**
-     * review Roadmap 第 5 點要求的參數化測試：未在 SecurityConfig 明列的
-     * 管理端點不得被匿名存取。
+     * 防的是 review C4 回歸：{@code POST /api/v1/admin/admins} 在舊版是 permitAll，
+     * 讓「部署後、owner 建立帳號前」 anyone 都能搶註 ADMIN。首位管理員現已改由
+     * {@code AdminBootstrapRunner} 於啟動時建立。
      *
-     * <p>重點是 {@code POST /api/v1/admin/admins} —— 舊版它是 permitAll，
-     * 導致部署後、owner 建立帳號前的時間窗可被公網搶註 ADMIN（review C4）。
-     * 首位管理員現已改由 {@code AdminBootstrapRunner} 於啟動時建立。</p>
+     * <p>注意這些路徑全都被 {@code /api/v1/admin/**} 明確列舉，因此本測試
+     * <b>不</b>負責偵測 review H3 的 fail-open 回歸 —— 見下方
+     * {@link #shouldDenyAnonymousAccessToUnlistedEndpoints(String)}。
      *
      * <p>用 MockMvc 實際打一次請求來驗證授權鏈，比直接操作 SecurityContext
      * 物件更貼近真實行為，也較不受 Spring Security 內部 API 變動影響。</p>
@@ -121,6 +155,207 @@ class SecurityConfigTest {
     void shouldDenyAnonymousAccessToAdminEndpoints(String path) throws Exception {
         mockMvc.perform(post(path).contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    /**
+     * review H3 的真正防護網：SecurityConfig 完全沒有列舉的端點，匿名不得存取。
+     *
+     * <p>為什麼需要這個測試：{@link #shouldDenyAnonymousAccessToAdminEndpoints(String)}
+     * 打的路徑都被 {@code /api/v1/admin/**} 明確列舉，因此只要
+     * {@code anyRequest()} 退回 {@code permitAll()}，那個測試依然會綠 ——
+     * 對 fail-open 回歸零鑑別力。這裡改打「沒有任何 matcher 覆蓋」的路徑，
+     * 才是唯一能真正抓出 {@code anyRequest()} 被改回去的測試。</p>
+     *
+     * <p>這些路徑在 {@code @WebMvcTest(AdminController.class)} 中沒有對應的 Handler，
+     * 本該回 404。但 {@code AuthorizationFilter} 執行於 {@code DispatcherServlet}
+     * <b>之前</b>，請求會先被授權擋下 → 直接 401，永遠走不到 404。
+     * 這也代表本測試在 {@code anyRequest()} 退回 {@code permitAll()} 時會立刻變紅。</p>
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "/api/v2/soaps",        // 版本前綴不同，不應被現有 matcher 誤放行
+            "/api/v1/unknown",      // 未定義的 API
+            "/internal/secret",     // 非 /api 前綴
+            "/actuator/health",     // 日後若引入 actuator，預設不應對外公開
+            "/",                    // 根路徑
+            "/index.html"
+    })
+    @DisplayName("未在 SecurityConfig 列舉的端點不得匿名存取（fail-closed，review H3）")
+    void shouldDenyAnonymousAccessToUnlistedEndpoints(String path) throws Exception {
+        mockMvc.perform(get(path))
+                .andExpect(status().isUnauthorized());
+    }
+
+    /**
+     * CORS 預檢（preflight）不得被 {@code anyRequest().authenticated()} 擋下。
+     *
+     * <p>本專案是前後端分離、跨來源呼叫（dev 為 {@code localhost:4200 → :8080}），
+     * 瀏覽器對 JSON／帶標頭的請求會先送 {@code OPTIONS} 預檢。Spring Security 的
+     * {@code CorsFilter} 位於 {@code AuthorizationFilter} 之前，會對預檢請求短路回應，
+     * 理論上不會變 401。</p>
+     *
+     * <p>這條測試是為了把上述「理論」變成「實測事實」：一旦哪天迴歸成 401，
+     * 症狀會是前台整個站抓不到資料（但主控台只看得到 CORS 錯誤），
+     * 屬於極難定位的故障。</p>
+     */
+    @Test
+    @DisplayName("跨來源預檢（OPTIONS）不應被 anyRequest().authenticated() 擋下")
+    void shouldAllowCorsPreflight() throws Exception {
+        mockMvc.perform(options("/api/v1/soaps")
+                        .header("Origin", "http://localhost:4200")
+                        .header("Access-Control-Request-Method", "GET"))
+                .andExpect(status().is2xxSuccessful());
+    }
+
+    /**
+     * {@code /error} 必須維持匿名可達，與 {@link #shouldDenyAnonymousAccessToUnlistedEndpoints(String)}
+     * 是同一件事的兩面。
+     *
+     * <p>Spring Security 預設攔截 ERROR dispatcher type。若這條日後被移除，
+     * 未登入使用者的任何 4xx／5xx 都會被改寫成 401：真實錯誤碼被掩蓋不說，
+     * 前端還會誤導使用者「請重新登入」，讓排查變得更困難。</p>
+     */
+    @Test
+    @DisplayName("匿名請求 /error 不應被擋（否則真實 4xx/5xx 會被改寫成 401）")
+    void shouldNotRequireAuthenticationForErrorPath() throws Exception {
+        int status = mockMvc.perform(get("/error"))
+                .andReturn()
+                .getResponse()
+                .getStatus();
+
+        assertThat(status)
+                .as("/error 必須 permitAll，否則未登入使用者的錯誤碼會被改寫成 401")
+                .isNotIn(HttpStatus.UNAUTHORIZED.value(), HttpStatus.FORBIDDEN.value());
+    }
+
+    /**
+     * review H4 的守門測試：白名單解析規則與 fail-fast 行為。
+     *
+     * <p>這些測試直接呼叫 {@link SecurityConfig#parseAllowedOrigins(String)}，
+     * 因為 fail-fast 發生在建構子（= Spring 建立 bean = 應用啟動）時，
+     * 用 MockMvc 無法觀察 —— 應用根本不會啟動成功。</p>
+     */
+    @Test
+    @DisplayName("多個來源應以逗號切分並去除前後空白")
+    void shouldSplitAndTrimMultipleOrigins() {
+        List<String> origins = SecurityConfig.parseAllowedOrigins(
+                " https://a.com , http://localhost:4200 ");
+
+        assertThat(origins).containsExactly("https://a.com", "http://localhost:4200");
+    }
+
+    @Test
+    @DisplayName("重複的來源應被去重")
+    void shouldDeduplicateOrigins() {
+        List<String> origins = SecurityConfig.parseAllowedOrigins(
+                "https://a.com, https://a.com");
+
+        assertThat(origins).containsExactly("https://a.com");
+    }
+
+    @Test
+    @DisplayName("空字串與多餘逗號應被忽略，不產生無效來源")
+    void shouldIgnoreEmptySegments() {
+        List<String> origins = SecurityConfig.parseAllowedOrigins("https://a.com,,  ,");
+
+        assertThat(origins).containsExactly("https://a.com");
+    }
+
+    /**
+     * 負向測試：萬用字元必須讓啟動失敗。
+     *
+     * <p>若放行 {@code *}，整道 H4 就被一個字元繞過了，卻沒有任何警訊 ——
+     * 這與專案對 {@code JWT_SECRET} / {@code DATABASE_PASSWORD} 採取 fail-fast
+     * 的既有哲學一致。</p>
+     */
+    @Test
+    @DisplayName("含萬用字元 * 的設定應讓啟動失敗（fail-fast，review H4）")
+    void shouldRejectWildcardOrigin() {
+        assertThatThrownBy(() -> SecurityConfig.parseAllowedOrigins("*"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("*");
+
+        // 即使混在多筆之中也必須被擋下
+        assertThatThrownBy(() -> SecurityConfig.parseAllowedOrigins(
+                "https://a.com, *"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("*");
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"   ", ",", " , , "})
+    @DisplayName("空白或無實質內容的設定應讓啟動失敗（fail-fast）")
+    void shouldRejectBlankOrigins(String raw) {
+        assertThatThrownBy(() -> SecurityConfig.parseAllowedOrigins(raw))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    /**
+ * BCrypt cost 必須是 12（review H5 由 10 調高）。
+ *
+ * <p>此斷言把「安全強度」這個屬性釘住。若有人為了「登入快一點」而調低 strength，
+ * 會直接看到這個測試失敗，而不是默默降低暴力猜解的成本。</p>
+ */
+@Test
+@DisplayName("BCrypt cost 應為 12（review H5：提高暴力猜解成本）")
+void shouldUseBcryptCost12() {
+PasswordEncoder encoder = config.passwordEncoder();
+
+assertThat(encoder).isInstanceOf(BCryptPasswordEncoder.class);
+
+BCryptPasswordEncoder bcrypt = (BCryptPasswordEncoder) encoder;
+String encoded = bcrypt.encode("probe-password");
+
+// BCrypt hash 內嵌 cost：$2a$12$...；cost 會補零成兩位數，故以整數比對
+String[] parts = encoded.split("\\$");
+assertThat(parts).as("應為 BCrypt 格式：%s", encoded).hasSize(4);
+assertThat(Integer.parseInt(parts[2]))
+.as("BCrypt cost 應為 %d，調低會直接降低爆破成本", SecurityConfig.BCRYPT_STRENGTH)
+.isEqualTo(SecurityConfig.BCRYPT_STRENGTH);
+}
+
+/**
+ * cost 12 的實際耗時實測 —— 證明「消除帳號列舉」的 dummy 比對在正式環境是有效的。
+ *
+ * <p>為什麼需要這個測試：H5 實作時曾把 dummy hash 寫死成 {@code $2a$10$}，
+ * 而正式 encoder 是 cost 12 —— dummy 比對只有真實比對約 6% 的成本，
+ * 消除帳號列舉<b>完全失效卻沒有任何錯誤</b>。既有的時間對齊測試用 cost 4，
+ * 兩邊同樣偏低而互相掩蓋，沒抓到。
+ *
+ * <p>本測試直接以正式的 cost 12 量測 dummy 比對與真實比對的耗時比，
+ * 把「兩者必須同一個數量級」變成可驗證的事實。</p>
+ */
+@Test
+@DisplayName("以正式 cost 12 實測：dummy 比對與真實比對的耗時應在同一量級（review H5）")
+void shouldAlignDummyMatchCostAtProductionStrength() {
+BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(SecurityConfig.BCRYPT_STRENGTH);
+
+// 模擬 AdminUserDetailsService 的做法：由同一個 encoder 產生 dummy hash
+String dummyHash = encoder.encode(UUID.randomUUID().toString());
+String realHash = encoder.encode("correct-password");
+
+// 先各跑一次暖機，避免 JIT 編譯時間干擾量測
+encoder.matches("warmup-a", realHash);
+encoder.matches("warmup-b", dummyHash);
+
+long realMillis = timeOf(() -> encoder.matches("wrong-password", realHash));
+long dummyMillis = timeOf(() -> encoder.matches("never-matches-this-value", dummyHash));
+
+// 比例界線取 0.5：兩個都是同一個 cost 的 BCrypt，耗時理應非常接近；
+// 若 dummy hash 的 cost 較低（原本的 bug 是 10 vs 12，約 6%），必然遠低於此界線。
+assertThat(dummyMillis)
+.as("dummy 比對(%dms) 應與真實比對(%dms) 同一量級 —— "
++ "偏低代表 dummy hash 的 cost 與 encoder 不一致，消除帳號列舉會失效",
+dummyMillis, realMillis)
+.isGreaterThanOrEqualTo((long) (realMillis * 0.5));
+}
+
+/** 以毫秒量測一段動作的耗時。刻意不用 assertTimeout，避免受 JUnit 量測機制影響。 */
+    private long timeOf(Runnable action) {
+        long start = System.nanoTime();
+        action.run();
+        return (System.nanoTime() - start) / 1_000_000;
     }
 
     /**

@@ -18,14 +18,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
  * 守護 {@code /uploads/**} 的匿名存取。
  *
  * <p>前端以 {@code <img src="/uploads/...">} 載入圖片，瀏覽器不會附帶 JWT，
- * 因此這條路徑必須 permitAll。若日後依 review H7 把
- * {@code SecurityConfig} 的 {@code anyRequest()} 改成 {@code authenticated()}
- * 卻漏掉這個 matcher，正式站會「所有圖片變 401」，
- * 而且前端只會顯示 placeholder、不會報錯，極難察覺。</p>
+ * 因此這條路徑必須 permitAll。review H3 已把 {@code SecurityConfig} 的
+ * {@code anyRequest()} 改為 {@code authenticated()}，若漏掉這個 matcher，
+ * 正式站會「所有圖片變 401」，而且前端只會顯示 placeholder、不會報錯，極難察覺。</p>
  *
- * <p>注意：目前 {@code anyRequest()} 仍是 {@code permitAll}（H7 未修），
- * 所以本測試目前並不會擋下未加 matcher 的情況——它是一道針對 H7 的預先防護網，
- * H7 落地後才會真正具有鑑別力。</p>
+ * <p>本測試在 H3 修正後才真正具有鑑別力：{@code authenticated()} 生效的話，
+ * 少一條 permitAll matcher，這兩個測試就會立刻紅燈。</p>
  */
 @WebMvcTest(PublicSoapController.class)
 @Import({SecurityConfig.class, ControllerTestSupport.class})

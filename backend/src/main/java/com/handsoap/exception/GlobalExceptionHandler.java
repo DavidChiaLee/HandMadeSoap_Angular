@@ -3,6 +3,7 @@ package com.handsoap.exception;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.AuthenticationException;
@@ -62,6 +63,27 @@ public class GlobalExceptionHandler {
         response.put("message", "Invalid username or password");
         response.put("data", null);
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
+    }
+
+    /**
+     * 登入嘗試過多（review H5）→ 429，並附 {@code Retry-After}。
+     *
+     * <p>必須在 {@link #handleAuthenticationException(AuthenticationException)} 之外
+     * 單獨處理：429 與 401 對使用者的意義不同（等待 vs 檢查密碼），
+     * 前端需要不同的提示。若誤回 401，使用者會不斷重試而讓封鎖持續延長。</p>
+     */
+    @ExceptionHandler(TooManyLoginAttemptsException.class)
+    public ResponseEntity<Map<String, Object>> handleTooManyLoginAttempts(TooManyLoginAttemptsException ex) {
+        log.warn("[audit] login-throttled: {}", ex.getMessage());
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", false);
+        response.put("message", ex.getMessage());
+        response.put("data", null);
+
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(Math.max(ex.getRetryAfterSeconds(), 1)))
+                .body(response);
     }
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)

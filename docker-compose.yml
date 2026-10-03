@@ -18,7 +18,10 @@ services:
     # 刻意不發布對外埠：後端只透過 handsoap-net 內部通訊，對外一律走 nginx（80/443）。
     # 若這裡保留 ports，後端 API（含 /api/v1/admin/**）會直接暴露在公網，
     # 繞過 nginx 的 TLS 與任何存取控制，等同多開一個後門。
-    # 本機若要連後端，可改用：docker compose exec backend wget -qO- http://localhost:8080/actuator/health
+    # 注意：目前 pom.xml 沒有 spring-boot-starter-actuator，/actuator/health 不存在。
+    # 日後若要加入 actuator 做健康檢查，SecurityConfig 已將 anyRequest() 改為
+    # authenticated()（review H3），/actuator/** 會預設需要認證，
+    # 必須顯式加上 requestMatchers("/actuator/health").permitAll() 才能讓探針使用。
     environment:
       - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/handsoap?useSSL=false&serverTimezone=Asia/Taipei&allowPublicKeyRetrieval=true
       - SPRING_DATASOURCE_USERNAME=${DB_USER}
@@ -26,6 +29,9 @@ services:
       - SPRING_JPA_HIBERNATE_DDL_AUTO=none
       - JWT_SECRET=${JWT_SECRET}
       - FILE_UPLOAD_DIR=/app/uploads
+      # CORS 白名單（review H4）：後端啟動時會驗證，不可含 *（含 * 直接啟動失敗）。
+      # 生產請在 .env 設為實際網域，例如 https://your-domain.com
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:4200}
       # 首位管理員 bootstrap（預設關閉；建立完成後請把 .env 的值設回 false）
       - BOOTSTRAP_ENABLED=${BOOTSTRAP_ENABLED:-false}
       - BOOTSTRAP_ADMIN_USERNAME=${BOOTSTRAP_ADMIN_USERNAME:-}
@@ -33,6 +39,10 @@ services:
       - BOOTSTRAP_ADMIN_EMAIL=${BOOTSTRAP_ADMIN_EMAIL:-}
     volumes:
       - ./uploads:/app/uploads
+      # 審計日誌落地（review H5）：登入失敗／成功／被限流事件記在 /app/logs。
+      # 沒有這個掛載的話，日誌只寫在容器 stdout，docker compose down 後全部消失，
+      # 「寫入審計日誌」就等於沒寫。請確認 logs/ 目錄已存在且可被容器用戶寫入。
+      - ./logs:/app/logs
     depends_on:
       mysql:
         condition: service_healthy

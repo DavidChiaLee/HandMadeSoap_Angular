@@ -25,6 +25,11 @@ build/
 target/
 uploads/*
 !uploads/.gitkeep
+# 審計日誌（review H5）：應用日誌落地目錄，內容屬營運資料不進版控。
+# 與 uploads/ 同理排除內容但保留 .gitkeep，否則目錄不存在時
+# docker 的 volume 掛載會以 root 身分建立，容器內非 root 用戶將無法寫入。
+logs/*
+!logs/.gitkeep
 .mysql-data/
 backups/*
 !backups/.gitkeep
