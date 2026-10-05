@@ -62,7 +62,12 @@ import { AuthService } from '../shared/services/auth.service';
         <header class="bg-white shadow-sm px-6 py-4 flex items-center justify-between">
           <h1 class="text-xl font-semibold text-gray-800">管理後台</h1>
           <div class="flex items-center space-x-4">
-            <span class="text-gray-600">{{ currentUser?.name }}</span>
+            <!--
+            欄位是 username 不是 name：後端 LoginResponse 只回
+            accessToken / refreshToken / username / role，沒有 name。
+            原先寫 currentUser?.name 導致這裡永遠是空白。
+          -->
+            <span class="text-gray-600">{{ currentUser?.username }}</span>
             <button (click)="logout()" class="text-amber-700 hover:text-amber-900">登出</button>
           </div>
         </header>

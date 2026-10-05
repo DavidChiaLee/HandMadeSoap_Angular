@@ -5,7 +5,25 @@ services:
     build: ./frontend
     ports:
       - "80:80"
-      - "443:443"
+      # 刻意不發布 443（review H8，階段 1）。
+      #
+      # 為什麼「發布了但連不上」比不發布更糟：Docker 的 userland proxy 會先
+      # 接受 TCP 連線再轉發到容器，容器內無人監聽時症狀是「TCP 建立後無回應
+      # / reset」，而不是 connection refused —— 部署時會誤判成防火牆或負載問題。
+      # nginx/nginx.conf 目前只有 listen 80，沒有任何 ssl server block。
+      #
+      # ---- 上 TLS 之前必讀的三個坑（詳見 docs/review/... §0.6）----
+      # ① 先開 ACME 例外再轉 301：直接加 return 301 https://$host$request_uri
+      #    會讓 Let's Encrypt 的 http-01 驗證被轉到「沒有憑證的 https」，
+      #    形成憑證永遠發不下來的死鎖。需要
+      #    location /.well-known/acme-challenge/ { root /var/www/certbot; }
+      # ② listen 443 ssl http2; 語法已過時（nginx 1.25.1 起）：
+      #    專案用的 nginx:alpine 是 1.31.6，會噴 deprecation 警告。
+      #    正確寫法是 listen 443 ssl; 另起一行 http2 on;
+      # ③ 必須同步把 .env 的 CORS_ALLOWED_ORIGINS 改成 https://<網域>，
+      #    否則全站 403；且 Spring 回空 body，前端只顯示「操作失敗」，症狀與
+      #    原因完全對不上（見 §0.2 H4）。
+      # - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
@@ -51,10 +69,20 @@ services:
 
   mysql:
     image: mysql:8.0
-    ports:
-      - "3307:3306"
+    # 刻意不發布對外埠（review H6）。雲主機公網 IP 下發布 3307 等於資料庫裸奔，
+    # root 密碼強度會是唯一防線，違反最小暴露原則。
+    #
+    # 容器間通訊走 handsoap-net 內部 DNS，刪除後「無任何設定需要修改」：
+    #   - backend：SPRING_DATASOURCE_URL 用 mysql:3306（本檔下方 environment）
+    #   - backup ：MYSQL_HOST=mysql
+    #   - mysql/init/*.sh：容器內以 socket 執行，不經網路
+    #
+    # 本機開發需要直連時，另外帶 -f docker-compose.dev.yml（僅綁 127.0.0.1）。
+    # 部署到正式主機時「不可」帶該檔，否則等於把這裡收掉的暴露又開回來。
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     environment:
+      # 刻意不設 MYSQL_ROOT_HOST=localhost：一旦設定，root@'%' 不再存在，
+      # backup-loop.sh 的 mysqldump -h mysql -uroot（走 TCP）會全部失敗、備份靜默中斷。
       - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASS}
       - MYSQL_DATABASE=handsoap
       - MYSQL_USER=${DB_USER}
@@ -83,9 +111,20 @@ services:
       - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASS}
       - BACKUP_INTERVAL=300
       - BACKUP_RETRY=10
+      # 保留天數（review H7）。超過此天數的備份會由腳本自動刪除。
+      #
+      # 磁碟用量估算（務必依 VPS 實際容量調整）：
+      #   uploads/ 目前約 164MB。每 5 分鐘一份 = 每日 288 份。
+      #   7 天 → 2016 份 × 約 30MB(gz) ≈ 60GB，遠超常見 20~40GB 的 VPS 磁碟。
+      #   若空間有限，請同時調大 BACKUP_INTERVAL 或調小此值，
+      #   例如 BACKUP_INTERVAL=3600（每小時）＋ KEEP_DAYS=7 ≈ 4.2GB。
+      - BACKUP_KEEP_DAYS=${BACKUP_KEEP_DAYS:-7}
+      - CHECKSUM_DIR=/checksums
     volumes:
       - ./mysql/backup:/backup
       - ./backups:/backups
+      # 校驗值寫在獨立目錄：與備份同磁碟時，一起壞掉就等於沒有校驗。
+      - ./backups/checksums:/checksums
       - ./uploads:/uploads:ro
       - ./mysql/backup-loop.sh:/backup-loop.sh:ro
     entrypoint: ["/bin/sh", "/backup-loop.sh"]

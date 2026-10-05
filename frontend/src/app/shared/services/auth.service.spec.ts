@@ -112,4 +112,41 @@ describe('AuthService', () => {
     expect(states[states.length - 1]).toBeFalse();
     expect(router.navigate).toHaveBeenCalledWith(['/admin/login']);
   });
+
+  it('currentUser$ 應在登入後發出使用者資料（含 username）', () => {
+    // 必須 stub 回應帶 username：mockApiService 的預設回傳 of({})，
+    // 沒有 accessToken 就不會呼叫 setUser()，測試會因空資料而失敗。
+    api.post.and.returnValue(of(loginResponse));
+    const users: any[] = [];
+    service.currentUser$.subscribe((u: any) => users.push(u));
+
+    service.login({ username: 'admin', password: 'secret' }).subscribe();
+
+    // navbar 顯示使用者名稱靠的就是這個欄位（後端沒有 name）
+    expect(users[users.length - 1]).not.toBeNull();
+    expect(users[users.length - 1].username).toBe('admin');
+  });
+
+  it('currentUser$ 應在 logout 後發出 null', () => {
+    service.setUser(loginResponse);
+    const users: any[] = [];
+    service.currentUser$.subscribe(u => users.push(u));
+
+    service.logout();
+
+    expect(users[users.length - 1]).toBeNull();
+  });
+
+  it('currentUser$ 應以 localStorage 既有資料初始化（重新整理後仍正確）', () => {
+    localStorage.setItem(tokenKey, 'jwt-token');
+    localStorage.setItem(userKey, JSON.stringify(loginResponse));
+
+    // 重建 service 模擬頁面重新整理；constructor 會讀 localStorage 作為初始值
+    const fresh = new AuthService(api, router);
+
+    let emitted: any = undefined;
+    fresh.currentUser$.subscribe((u: any) => emitted = u);
+
+    expect(emitted.username).toBe('admin');
+  });
 });

@@ -1,0 +1,26 @@
+# 本機開發專用覆寫檔 —— 必須「顯式」帶入，Docker 不會自動載入：
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
+# 為什麼刻意不叫 docker-compose.override.yml：
+#   該檔名會被 `docker compose up`「自動套用」。一旦提交進版控，正式主機部署時
+#   會在無知情的情況下把 MySQL 埠重新發布出去，等於 H6 修白修
+#   （見 docs/review/2026-09-29-full-code-review.md §0.4）。
+#
+# 為什麼綁 127.0.0.1 而不是 0.0.0.0：
+#   即使在共用網段／咖啡廳 WiFi，其他機器也無法連入本機的資料庫埠。
+#
+# 本機開發的資料庫連線方式：
+#   1. 本機直跑 Spring Boot：DATABASE_URL 用 jdbc:mysql://localhost:3307/handsoap?...
+#      （後端 container 的 ports 刻意不發布，詳見 docker-compose.yml backend 註解）
+#   2. 容器內查詢（bash / PowerShell 皆可）：
+#        docker compose exec mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" handsoap'
+#   3. 還原備份時記得加 -T 關閉 TTY，否則 stdin 會被截斷：
+#        docker compose exec -T mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" handsoap' < mysql/backup/05-latest-backup.sql
+#
+# 正式主機需要用 GUI 工具連 DB 時「不需」也不應使用本檔，
+# 請改用 SSH tunnel（見 README「本地開發 › 資料庫連線」）。
+services:
+  mysql:
+    ports:
+      - "127.0.0.1:3307:3306"

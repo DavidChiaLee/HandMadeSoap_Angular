@@ -12,6 +12,10 @@ mysql/init/05-latest-backup.sql
 mysql/**/*backup*.sql
 *.sql.bak
 mysqldump/
+# review H7：日期檔名的備份。mysql/backup/* 已涵蓋 sql.gz，
+# 但 uploads 封存（tar.gz）與校驗值分別在 backups/ 與 backups/checksums/ 下，需獨立規則。
+handsoap-*.sql.gz
+handsoap-uploads-*.tar.gz
 
 # --- 本地環境覆寫 ---
 # 注意：application.properties 是 Spring Boot 的唯一設定檔，必須進版控，
@@ -33,6 +37,12 @@ logs/*
 .mysql-data/
 backups/*
 !backups/.gitkeep
+# review H7：校驗值放在獨立目錄，但仍屬營運資料，不進版控。
+# 必須讓父目錄能被 included，否則整個 backups/checksums/ 會消失、
+# 新 clone 後目錄不存在，docker 的 volume 掛載會以 root 建立（容器內非 root 用戶無法寫入）。
+!backups/checksums/
+backups/checksums/*
+!backups/checksums/.gitkeep
 .vscode/
 .idea/
 *.log
