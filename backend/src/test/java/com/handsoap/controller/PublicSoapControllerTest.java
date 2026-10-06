@@ -15,6 +15,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.math.BigDecimal;
 import java.util.List;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -65,10 +66,11 @@ class PublicSoapControllerTest {
     }
 
     @Test
-    @DisplayName("搜尋端點缺少 keyword 會因 MissingServletRequestParameterException 未被處理而回 500（記錄目前行為）")
-    void shouldReturn500WhenKeywordMissing() throws Exception {
+    @DisplayName("搜尋端點缺少 keyword 應回 400（MissingServletRequestParameterException 已有專屬 handler）")
+    void shouldReturn400WhenKeywordMissing() throws Exception {
         mockMvc.perform(get("/api/v1/soaps/search"))
-                .andExpect(status().isInternalServerError());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(containsString("keyword")));
     }
 
     @Test

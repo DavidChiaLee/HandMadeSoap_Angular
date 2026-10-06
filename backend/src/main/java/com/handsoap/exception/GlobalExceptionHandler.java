@@ -1,16 +1,22 @@
 package com.handsoap.exception;
 
+import com.handsoap.config.TraceIdFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.util.HashMap;
@@ -106,13 +112,79 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
     }
 
+    /**
+     * Spring MVC 內建解析例外 → 4xx（review M1）。
+     *
+     * <p>這幾類原本會被 {@link #handleGenericException} 一併吞成 500，除了狀態碼錯誤，
+     * 還可能把 Jackson 的欄位結構、Spring 的型別描述帶進回應。實際上都是客戶端的錯，
+     * 故回 4xx + 固定（可控）訊息；cause 細節只寫日誌，body 附 traceId 供比對。</p>
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, Object>> handleHttpMessageNotReadable(
+            HttpMessageNotReadableException ex) {
+        String traceId = TraceIdFilter.currentTraceId();
+        // cause 含內部欄位與型別結構，僅記日誌
+        log.warn("[traceId={}] HttpMessageNotReadableException", traceId, ex);
+        return errorResponse(HttpStatus.BAD_REQUEST, "請求內容格式錯誤", traceId);
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<Map<String, Object>> handleMethodArgumentTypeMismatch(
+            MethodArgumentTypeMismatchException ex) {
+        String traceId = TraceIdFilter.currentTraceId();
+        // 只回我們自己的參數名；requiredType 與傳入值不上送
+        log.warn("[traceId={}] Method argument type mismatch: name={}, value={}",
+                traceId, ex.getName(), ex.getValue());
+        return errorResponse(HttpStatus.BAD_REQUEST, "請求參數格式錯誤：" + ex.getName(), traceId);
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<Map<String, Object>> handleMissingServletRequestParameter(
+            MissingServletRequestParameterException ex) {
+        String traceId = TraceIdFilter.currentTraceId();
+        log.warn("[traceId={}] Missing request parameter: {}", traceId, ex.getParameterName());
+        return errorResponse(HttpStatus.BAD_REQUEST, "缺少必要參數：" + ex.getParameterName(), traceId);
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<Map<String, Object>> handleHttpRequestMethodNotSupported(
+            HttpRequestMethodNotSupportedException ex) {
+        String traceId = TraceIdFilter.currentTraceId();
+        log.warn("[traceId={}] HTTP method not supported: {}", traceId, ex.getMethod());
+        return errorResponse(HttpStatus.METHOD_NOT_ALLOWED, "不支援的 HTTP 方法", traceId);
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<Map<String, Object>> handleHttpMediaTypeNotSupported(
+            HttpMediaTypeNotSupportedException ex) {
+        String traceId = TraceIdFilter.currentTraceId();
+        // 不回顯客戶端送的 Content-Type：那是外部任意字串
+        log.warn("[traceId={}] Unsupported media type: {}", traceId, ex.getContentType());
+        return errorResponse(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "不支援的 Content-Type", traceId);
+    }
+
+    /**
+     * 未分類例外 → 500（review M1）。
+     *
+     * <p>固定訊息 + traceId：例外細節（SQL 片段、檔案路徑、內部欄位結構）只入日誌，
+     * 不再串進 {@code message}。前端把 traceId 附在回報裡，排障時以同一個 id
+     * 比對日誌的 {@code [traceId:...]} 即可找到完整堆疊。</p>
+     */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGenericException(Exception ex) {
-        log.error("Unhandled exception", ex);
+        String traceId = TraceIdFilter.currentTraceId();
+        log.error("[traceId={}] Unhandled exception", traceId, ex);
+        return errorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "伺服器錯誤，請稍後再試", traceId);
+    }
+
+    /** 組出含 traceId 的錯誤回應；message 必須是本檔自訂的可控字串，不得拼接例外細節。 */
+    private static ResponseEntity<Map<String, Object>> errorResponse(
+            HttpStatus status, String message, String traceId) {
         Map<String, Object> response = new HashMap<>();
         response.put("success", false);
-        response.put("message", "An unexpected error occurred: " + ex.getMessage());
+        response.put("message", message);
         response.put("data", null);
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        response.put("traceId", traceId);
+        return ResponseEntity.status(status).body(response);
     }
 }

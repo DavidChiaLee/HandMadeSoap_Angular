@@ -1,17 +1,27 @@
 package com.handsoap.exception;
 
+import com.handsoap.config.TraceIdFilter;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.slf4j.MDC;
 import org.springframework.core.MethodParameter;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpInputMessage;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.validation.BeanPropertyBindingResult;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
+import java.io.InputStream;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -104,15 +114,111 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
-    @DisplayName("未處理的例外應回 500")
+    @DisplayName("未處理的例外應回 500 固定訊息 + traceId，不外洩原始例外")
     void shouldHandleGenericException() {
         ResponseEntity<Map<String, Object>> response =
-                handler.handleGenericException(new IllegalStateException("boom"));
+                handler.handleGenericException(new IllegalStateException("boom /internal/secret"));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
         assertThat(response.getBody()).containsEntry("success", false)
+                .containsEntry("message", "伺服器錯誤，請稍後再試")
                 .containsEntry("data", null);
-        assertThat((String) response.getBody().get("message")).contains("boom");
+        assertThat((String) response.getBody().get("message")).doesNotContain("boom");
+        assertThat((String) response.getBody().get("traceId")).isNotBlank();
+    }
+
+    @Test
+    @DisplayName("MDC 有 traceId 時 500 回應應沿用同一個值（回應與日誌才對得上）")
+    void shouldReuseTraceIdFromMdc() {
+        MDC.put(TraceIdFilter.MDC_KEY, "trace-abc-123");
+        try {
+            ResponseEntity<Map<String, Object>> response =
+                    handler.handleGenericException(new IllegalStateException("boom"));
+
+            assertThat(response.getBody()).containsEntry("traceId", "trace-abc-123");
+        } finally {
+            MDC.remove(TraceIdFilter.MDC_KEY);
+        }
+    }
+
+    @Test
+    @DisplayName("HttpMessageNotReadableException 應回 400 固定訊息，不外洩解析細節")
+    void shouldHandleHttpMessageNotReadable() {
+        HttpInputMessage stub = new HttpInputMessage() {
+            @Override
+            public HttpHeaders getHeaders() {
+                return new HttpHeaders();
+            }
+
+            @Override
+            public InputStream getBody() {
+                return InputStream.nullInputStream();
+            }
+        };
+        HttpMessageNotReadableException ex = new HttpMessageNotReadableException(
+                "JSON parse error: Unrecognized field \"secret\"", stub);
+
+        ResponseEntity<Map<String, Object>> response = handler.handleHttpMessageNotReadable(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).containsEntry("success", false)
+                .containsEntry("message", "請求內容格式錯誤")
+                .containsEntry("data", null);
+        assertThat((String) response.getBody().get("traceId")).isNotBlank();
+        assertThat((String) response.getBody().get("message")).doesNotContain("JSON parse error");
+    }
+
+    @Test
+    @DisplayName("MethodArgumentTypeMismatchException 應回 400，只帶我們自己的參數名")
+    void shouldHandleMethodArgumentTypeMismatch() throws NoSuchMethodException {
+        MethodParameter parameter = new MethodParameter(
+                DummyValidationTarget.class.getDeclaredMethod("save", String.class), 0);
+        MethodArgumentTypeMismatchException ex = new MethodArgumentTypeMismatchException(
+                "abc", Long.class, "id", parameter,
+                new IllegalArgumentException("For input string: \"abc\""));
+
+        ResponseEntity<Map<String, Object>> response = handler.handleMethodArgumentTypeMismatch(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).containsEntry("message", "請求參數格式錯誤：id")
+                .containsEntry("data", null);
+        assertThat((String) response.getBody().get("message")).doesNotContain("java.lang.Long");
+    }
+
+    @Test
+    @DisplayName("MissingServletRequestParameterException 應回 400 並指出參數名")
+    void shouldHandleMissingServletRequestParameter() {
+        MissingServletRequestParameterException ex =
+                new MissingServletRequestParameterException("keyword", "String");
+
+        ResponseEntity<Map<String, Object>> response = handler.handleMissingServletRequestParameter(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).containsEntry("message", "缺少必要參數：keyword");
+    }
+
+    @Test
+    @DisplayName("HttpRequestMethodNotSupportedException 應回 405")
+    void shouldHandleHttpRequestMethodNotSupported() {
+        HttpRequestMethodNotSupportedException ex = new HttpRequestMethodNotSupportedException("POST");
+
+        ResponseEntity<Map<String, Object>> response = handler.handleHttpRequestMethodNotSupported(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.METHOD_NOT_ALLOWED);
+        assertThat(response.getBody()).containsEntry("message", "不支援的 HTTP 方法");
+    }
+
+    @Test
+    @DisplayName("HttpMediaTypeNotSupportedException 應回 415，不回顯客戶端 Content-Type")
+    void shouldHandleHttpMediaTypeNotSupported() {
+        HttpMediaTypeNotSupportedException ex = new HttpMediaTypeNotSupportedException(
+                "Content type 'application/xml' not supported");
+
+        ResponseEntity<Map<String, Object>> response = handler.handleHttpMediaTypeNotSupported(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+        assertThat(response.getBody()).containsEntry("message", "不支援的 Content-Type");
+        assertThat((String) response.getBody().get("message")).doesNotContain("application/xml");
     }
 
     /** 僅供取得 MethodParameter，模擬 Controller 的方法簽章。 */
