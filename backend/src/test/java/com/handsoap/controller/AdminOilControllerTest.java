@@ -126,6 +126,31 @@ class AdminOilControllerTest {
     }
 
     @Test
+    @DisplayName("刪除單張圖片應呼叫 service 並回 200")
+    @WithMockUser(roles = "ADMIN")
+    void shouldDeleteOilImage() throws Exception {
+        given(oilService.deleteOilImage(1L, 7L)).willReturn(oil(1L, "橄欖油"));
+
+        mockMvc.perform(delete("/api/v1/admin/oils/1/images/7"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        verify(oilService).deleteOilImage(1L, 7L);
+    }
+
+    @Test
+    @DisplayName("刪除單張圖片：圖片不屬於該油品時應回 404")
+    @WithMockUser(roles = "ADMIN")
+    void shouldReturn404WhenImageMissing() throws Exception {
+        given(oilService.deleteOilImage(1L, 99L))
+                .willThrow(new com.handsoap.exception.ResourceNotFoundException(
+                        "Image not found with id: 99 for oil id: 1"));
+
+        mockMvc.perform(delete("/api/v1/admin/oils/1/images/99"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     @DisplayName("未登入時應回 401")
     void shouldReturn401WhenUnauthenticated() throws Exception {
         mockMvc.perform(get("/api/v1/admin/oils")).andExpect(status().isUnauthorized());

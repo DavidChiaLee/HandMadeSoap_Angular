@@ -103,6 +103,17 @@ import { MAX_UPLOAD_SIZE, UPLOAD_SIZE_ERROR_MSG } from '../../shared/constants';
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">圖片上傳</label>
+              <div *ngIf="currentEssentialOil.images?.length" class="mb-2">
+                <p class="text-xs text-gray-500 mb-1">既有圖片（點 × 移除）</p>
+                <div class="flex flex-wrap gap-2">
+                  <div *ngFor="let img of currentEssentialOil.images" class="relative w-20 h-20">
+                    <img [src]="imageSrc(img.imagePath)" class="w-full h-full object-cover rounded-lg" loading="lazy"
+                      [attr.alt]="'圖片 ' + img.id">
+                    <button type="button" (click)="deleteImage(img.id)" aria-label="移除這張圖片"
+                      class="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-600 text-white text-xs leading-none shadow hover:bg-red-700">×</button>
+                  </div>
+                </div>
+              </div>
               <input type="file" (change)="onFileSelected($event)" accept="image/*" class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-amber-50 file:text-amber-700 hover:file:bg-amber-100">
               <p *ngIf="fileError" class="mt-2 text-sm text-red-600">{{ fileError }}</p>
               <div *ngIf="selectedImagePreview" class="mt-2">
@@ -153,6 +164,30 @@ export class EssentialOilsComponent implements OnInit, OnDestroy {
   /** 圖片 URL 統一出口：無圖時退回本機佔位圖（見 FileUrlService） */
   fileUrl(images?: ReadonlyArray<ImageRef> | null): string {
     return this.fileUrlService.primaryUrl(images);
+  }
+
+  /** 單張圖片（圖庫縮圖）的 URL，走同一個 FileUrlService 出口 */
+  imageSrc(path?: string | null): string {
+    return this.fileUrlService.url(path ?? null);
+  }
+
+  /**
+   * 移除單張圖片（review M2：補上傳後無法移除個別圖片的缺口）。
+   * 後端回傳更新後的整筆 EssentialOil，直接以回傳值更新圖庫，避免多打一次列表請求。
+   */
+  deleteImage(imageId: number): void {
+    if (!this.currentEssentialOil.id || !confirm('確定要移除這張圖片嗎？')) {
+      return;
+    }
+    this.apiService.delete<EssentialOil>(`admin/essential-oils/${this.currentEssentialOil.id}/images/${imageId}`).subscribe({
+      next: (updated) => {
+        this.currentEssentialOil = { ...this.currentEssentialOil, images: updated.images ?? [] };
+        this.loadEssentialOils(this.page);
+      },
+      error: (err) => {
+        this.saveError = ApiService.getErrorMessage(err, '移除圖片失敗，請稍後再試');
+      }
+    });
   }
 
   ngOnInit(): void {

@@ -418,4 +418,119 @@ class FileStorageServiceTest {
                 .isInstanceOf(BadRequestException.class)
                 .hasMessageContaining("僅支援");
     }
+
+    // ---------- review M2：批次清理 / commit 後清理 / 掃描輔助 ----------
+
+    @Test
+    @DisplayName("deleteFilesQuietly 應刪除所有檔案且單檔失敗不中斷")
+    void shouldDeleteAllFilesQuietlyEvenWhenOneFails() throws IOException {
+        given(fileUploadConfig.getUploadDir()).willReturn(tempDir.toString());
+        Files.createFile(tempDir.resolve("a.png"));
+        Files.createFile(tempDir.resolve("b.png"));
+
+        // "../evil.png" 會被圍堵檢查拒絕（拋 BadRequestException），
+        // 但 a.png / b.png 仍必須被刪掉 —— 這正是 quietly 的語意
+        service.deleteFilesQuietly(java.util.List.of("../evil.png", "a.png", "b.png"));
+
+        assertThat(tempDir.resolve("a.png")).doesNotExist();
+        assertThat(tempDir.resolve("b.png")).doesNotExist();
+    }
+
+    @Test
+    @DisplayName("deleteFilesQuietly 對空/null 清單應完全不動作")
+    void shouldIgnoreEmptyOrNullListOnQuietDelete() {
+        // 刻意不 stub getUploadDir()：空清單不該碰到檔案系統
+        service.deleteFilesQuietly(null);
+        service.deleteFilesQuietly(java.util.List.of());
+    }
+
+    @Test
+    @DisplayName("無活躍交易時 deleteFilesAfterCommit 應立即刪除")
+    void shouldDeleteImmediatelyWhenNoTransactionActive() throws IOException {
+        given(fileUploadConfig.getUploadDir()).willReturn(tempDir.toString());
+        Files.createFile(tempDir.resolve("now.png"));
+
+        // 單元測試無 Spring 交易同步 → 走 else 分支立即執行
+        service.deleteFilesAfterCommit(java.util.List.of("now.png"));
+
+        assertThat(tempDir.resolve("now.png")).doesNotExist();
+    }
+
+    @Test
+    @DisplayName("有活躍交易時 deleteFilesAfterCommit 應排程到 afterCommit 才刪")
+    void shouldDeferDeletionUntilAfterCommitWhenTransactionActive() throws IOException {
+        given(fileUploadConfig.getUploadDir()).willReturn(tempDir.toString());
+        Path pending = tempDir.resolve("pending.png");
+        Files.createFile(pending);
+
+        org.springframework.transaction.support.TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.deleteFilesAfterCommit(java.util.List.of("pending.png"));
+
+            // transaction 尚未 commit → 檔案必須還在（關鍵：避免 commit 失敗時檔案已滅失）
+            assertThat(pending).exists();
+
+            // 模擬 commit 成功
+            org.springframework.transaction.support.TransactionSynchronizationManager
+                    .getSynchronizations()
+                    .forEach(org.springframework.transaction.support.TransactionSynchronization::afterCommit);
+            assertThat(pending).doesNotExist();
+        } finally {
+            org.springframework.transaction.support.TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    @Test
+    @DisplayName("listRootFilenames 應只列出根目錄的一般檔案（不含子目錄）")
+    void shouldListOnlyRegularFilesAtRoot() throws IOException {
+        given(fileUploadConfig.getUploadDir()).willReturn(tempDir.toString());
+        Files.createFile(tempDir.resolve("a.png"));
+        Files.createFile(tempDir.resolve("b.webp"));
+        Files.createDirectory(tempDir.resolve("sub"));
+        Files.createFile(tempDir.resolve("sub").resolve("hidden.png"));
+
+        assertThat(service.listRootFilenames()).containsExactly("a.png", "b.webp");
+    }
+
+    @Test
+    @DisplayName("上傳目錄不存在時 listRootFilenames 應回空串列")
+    void shouldReturnEmptyListWhenUploadDirMissing() {
+        given(fileUploadConfig.getUploadDir()).willReturn(tempDir.resolve("not-exists").toString());
+
+        assertThat(service.listRootFilenames()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("hasAllowedExtension 應只接受白名單副檔名（大小寫不敏感）")
+    void shouldAcceptOnlyWhitelistedExtensions() {
+        assertThat(service.hasAllowedExtension("a.PNG")).isTrue();
+        assertThat(service.hasAllowedExtension("a.jpeg")).isTrue();
+        assertThat(service.hasAllowedExtension("a.svg")).isFalse();
+        assertThat(service.hasAllowedExtension("a.txt")).isFalse();
+        assertThat(service.hasAllowedExtension("no-extension")).isFalse();
+        assertThat(service.hasAllowedExtension("trailing.")).isFalse();
+        assertThat(service.hasAllowedExtension(null)).isFalse();
+    }
+
+    @Test
+    @DisplayName("lastModified 對存在／不存在的檔案分別回傳時間與 null")
+    void shouldReturnLastModifiedOrNullForMissingFile() throws IOException {
+        given(fileUploadConfig.getUploadDir()).willReturn(tempDir.toString());
+        Files.createFile(tempDir.resolve("x.png"));
+
+        assertThat(service.lastModified("x.png")).isNotNull();
+        assertThat(service.lastModified("missing.png")).isNull();
+        assertThat(service.lastModified(null)).isNull();
+        assertThat(service.lastModified("   ")).isNull();
+    }
+
+    @Test
+    @DisplayName("lastModified 對路徑穿越值應被圍堵檢查拒絕")
+    void shouldRejectTraversalInLastModified() {
+        given(fileUploadConfig.getUploadDir()).willReturn(tempDir.toString());
+
+        assertThatThrownBy(() -> service.lastModified("../outside.png"))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("檔案路徑不合法");
+    }
 }

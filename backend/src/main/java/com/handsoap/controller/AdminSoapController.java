@@ -69,4 +69,12 @@ public class AdminSoapController {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Image uploaded successfully", soap));
     }
+
+    @DeleteMapping("/{id}/images/{imageId}")
+    public ResponseEntity<ApiResponse<SoapResponse>> deleteSoapImage(
+            @PathVariable Long id,
+            @PathVariable Long imageId) {
+        SoapResponse soap = soapService.deleteSoapImage(id, imageId);
+        return ResponseEntity.ok(ApiResponse.success("Image deleted successfully", soap));
+    }
 }

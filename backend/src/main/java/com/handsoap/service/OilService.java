@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.ArrayList;
+import java.util.List;
 
 @Service
 @Transactional
@@ -71,7 +72,36 @@ public class OilService {
     public void deleteOil(Long id) {
         Oil oil = oilRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Oil not found with id: " + id));
+
+        // 先快取檔名再刪 DB（images 為 LAZY）；檔案刪除排程到 commit 之後
+        List<String> imagePaths = oil.getImages().stream()
+                .map(OilImage::getImagePath)
+                .toList();
+
         oilRepository.delete(oil);
+        fileStorageService.deleteFilesAfterCommit(imagePaths);
+    }
+
+    /**
+     * 刪除單張圖片（review M2）。{@code imageId} 必須屬於 {@code oilId}，否则回 404。
+     * DB 列由 {@code orphanRemoval = true} 負責，檔案排程到 commit 之後才刪。
+     */
+    public OilResponse deleteOilImage(Long oilId, Long imageId) {
+        Oil oil = oilRepository.findById(oilId)
+                .orElseThrow(() -> new ResourceNotFoundException("Oil not found with id: " + oilId));
+
+        OilImage image = oil.getImages().stream()
+                .filter(img -> imageId.equals(img.getId()))
+                .findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Image not found with id: " + imageId + " for oil id: " + oilId));
+
+        String imagePath = image.getImagePath();
+        oil.getImages().remove(image);
+        oilRepository.save(oil);
+
+        fileStorageService.deleteFilesAfterCommit(List.of(imagePath));
+        return toResponse(oil);
     }
 
     public OilResponse uploadOilImage(Long oilId, MultipartFile file, Integer sortOrder, Boolean isPrimary) {

@@ -2,6 +2,7 @@ package com.handsoap.service;
 
 import com.handsoap.dto.EssentialOilRequest;
 import com.handsoap.entity.EssentialOil;
+import com.handsoap.entity.EssentialOilImage;
 import com.handsoap.exception.ResourceNotFoundException;
 import com.handsoap.repository.EssentialOilRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -151,6 +152,52 @@ class EssentialOilServiceTest {
         service.deleteEssentialOil(3L);
 
         then(essentialOilRepository).should().delete(oil);
+    }
+
+    @Test
+    @DisplayName("刪除時應把圖檔路徑排程到 commit 後清理（review M2）")
+    void shouldScheduleImageFileDeletionAfterCommit() {
+        EssentialOil oil = essentialOil(3L, "檸檬精油");
+        oil.getImages().add(EssentialOilImage.builder()
+                .id(1L).imagePath("eo.png").essentialOil(oil).isPrimary(false).build());
+        given(essentialOilRepository.findById(3L)).willReturn(Optional.of(oil));
+
+        service.deleteEssentialOil(3L);
+
+        then(fileStorageService).should().deleteFilesAfterCommit(List.of("eo.png"));
+    }
+
+    @Test
+    @DisplayName("刪除單張圖片：所屬正確時應移除該圖並排程清檔")
+    void shouldDeleteImageBelongingToEssentialOil() {
+        EssentialOil oil = essentialOil(1L, "薰衣草精油");
+        EssentialOilImage keep = EssentialOilImage.builder()
+                .id(7L).imagePath("keep.png").essentialOil(oil).isPrimary(false).build();
+        EssentialOilImage remove = EssentialOilImage.builder()
+                .id(8L).imagePath("remove.png").essentialOil(oil).isPrimary(false).build();
+        oil.getImages().add(keep);
+        oil.getImages().add(remove);
+        given(essentialOilRepository.findById(1L)).willReturn(Optional.of(oil));
+        given(essentialOilRepository.save(any(EssentialOil.class))).willAnswer(inv -> inv.getArgument(0));
+
+        var response = service.deleteEssentialOilImage(1L, 8L);
+
+        assertThat(oil.getImages()).containsExactly(keep);
+        assertThat(response.getImages()).hasSize(1);
+        then(fileStorageService).should().deleteFilesAfterCommit(List.of("remove.png"));
+    }
+
+    @Test
+    @DisplayName("刪除單張圖片：imageId 不屬於該精油應拋 ResourceNotFoundException 且不碰檔案")
+    void shouldThrowWhenImageNotBelongingToEssentialOil() {
+        EssentialOil oil = essentialOil(1L, "薰衣草精油");
+        oil.getImages().add(EssentialOilImage.builder()
+                .id(7L).imagePath("keep.png").essentialOil(oil).isPrimary(false).build());
+        given(essentialOilRepository.findById(1L)).willReturn(Optional.of(oil));
+
+        assertThatThrownBy(() -> service.deleteEssentialOilImage(1L, 99L))
+                .isInstanceOf(ResourceNotFoundException.class);
+        then(fileStorageService).shouldHaveNoInteractions();
     }
 
     @Test

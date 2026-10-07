@@ -412,6 +412,56 @@ describe('SoapsComponent (admin)', () => {
     });
   });
 
+  describe('單張圖片刪除', () => {
+    beforeEach(() => {
+      component.ngOnInit();
+      api.getPage.calls.reset();
+    });
+
+    it('確認後應呼叫單圖刪除端點並以回傳值更新圖庫', () => {
+      spyOn(window, 'confirm').and.returnValue(true);
+      component.currentSoap = makeSoap({
+        id: 9,
+        images: [{ id: 1, imagePath: 'a.png', sortOrder: 0, isPrimary: true }]
+      });
+      api.delete.and.returnValue(of(makeSoap({ id: 9, images: [] })));
+
+      component.deleteImage(1);
+
+      expect(api.delete).toHaveBeenCalledWith('admin/soaps/9/images/1');
+      expect(component.currentSoap.images).toEqual([]);
+      expect(api.getPage).toHaveBeenCalled();
+    });
+
+    it('取消確認時不應送出刪除', () => {
+      spyOn(window, 'confirm').and.returnValue(false);
+      component.currentSoap = makeSoap({ id: 9 });
+
+      component.deleteImage(1);
+
+      expect(api.delete).not.toHaveBeenCalled();
+    });
+
+    it('未在編輯中的資料（無 id）不應送出刪除', () => {
+      spyOn(window, 'confirm').and.returnValue(true);
+      component.currentSoap = {};
+
+      component.deleteImage(1);
+
+      expect(api.delete).not.toHaveBeenCalled();
+    });
+
+    it('刪除失敗時應把錯誤寫入 saveError', () => {
+      spyOn(window, 'confirm').and.returnValue(true);
+      component.currentSoap = makeSoap({ id: 9 });
+      api.delete.and.returnValue(throwError(() => ({ error: { message: '圖檔不存在' } })));
+
+      component.deleteImage(1);
+
+      expect(component.saveError).toBe('圖檔不存在');
+    });
+  });
+
   describe('搜尋防抖', () => {
     beforeEach(() => {
       component.ngOnInit();

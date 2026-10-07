@@ -7,6 +7,8 @@ import com.handsoap.service.ContactService;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort.Direction;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -23,13 +25,15 @@ public class AdminContactController {
     }
 
     @GetMapping
-    public ResponseEntity<ApiResponse<Page<Contact>>> getAllContacts(Pageable pageable) {
+    public ResponseEntity<ApiResponse<Page<Contact>>> getAllContacts(
+            @PageableDefault(sort = "createdAt", direction = Direction.DESC, page = 0, size = 20) Pageable pageable) {
         Page<Contact> contacts = contactService.getAllContacts(pageable);
         return ResponseEntity.ok(ApiResponse.success(contacts));
     }
 
     @GetMapping("/unreplied")
-    public ResponseEntity<ApiResponse<Page<Contact>>> getUnrepliedContacts(Pageable pageable) {
+    public ResponseEntity<ApiResponse<Page<Contact>>> getUnrepliedContacts(
+            @PageableDefault(sort = "createdAt", direction = Direction.DESC, page = 0, size = 20) Pageable pageable) {
         Page<Contact> contacts = contactService.getUnrepliedContacts(pageable);
         return ResponseEntity.ok(ApiResponse.success(contacts));
     }

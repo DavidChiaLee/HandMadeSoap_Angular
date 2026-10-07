@@ -2,6 +2,7 @@ package com.handsoap.service;
 
 import com.handsoap.dto.OilRequest;
 import com.handsoap.entity.Oil;
+import com.handsoap.entity.OilImage;
 import com.handsoap.exception.ResourceNotFoundException;
 import com.handsoap.repository.OilRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -147,6 +148,48 @@ class OilServiceTest {
         service.deleteOil(3L);
 
         then(oilRepository).should().delete(existing);
+    }
+
+    @Test
+    @DisplayName("刪除時應把圖檔路徑排程到 commit 後清理（review M2）")
+    void shouldScheduleImageFileDeletionAfterCommit() {
+        Oil existing = oil(3L, "米糠油");
+        existing.getImages().add(OilImage.builder().id(1L).imagePath("oil.png").oil(existing).isPrimary(false).build());
+        given(oilRepository.findById(3L)).willReturn(Optional.of(existing));
+
+        service.deleteOil(3L);
+
+        then(fileStorageService).should().deleteFilesAfterCommit(List.of("oil.png"));
+    }
+
+    @Test
+    @DisplayName("刪除單張圖片：所屬正確時應移除該圖並排程清檔")
+    void shouldDeleteImageBelongingToOil() {
+        Oil existing = oil(1L, "橄欖油");
+        OilImage keep = OilImage.builder().id(7L).imagePath("keep.png").oil(existing).isPrimary(false).build();
+        OilImage remove = OilImage.builder().id(8L).imagePath("remove.png").oil(existing).isPrimary(false).build();
+        existing.getImages().add(keep);
+        existing.getImages().add(remove);
+        given(oilRepository.findById(1L)).willReturn(Optional.of(existing));
+        given(oilRepository.save(any(Oil.class))).willAnswer(inv -> inv.getArgument(0));
+
+        var response = service.deleteOilImage(1L, 8L);
+
+        assertThat(existing.getImages()).containsExactly(keep);
+        assertThat(response.getImages()).hasSize(1);
+        then(fileStorageService).should().deleteFilesAfterCommit(List.of("remove.png"));
+    }
+
+    @Test
+    @DisplayName("刪除單張圖片：imageId 不屬於該 oil 應拋 ResourceNotFoundException 且不碰檔案")
+    void shouldThrowWhenImageNotBelongingToOil() {
+        Oil existing = oil(1L, "橄欖油");
+        existing.getImages().add(OilImage.builder().id(7L).imagePath("keep.png").oil(existing).isPrimary(false).build());
+        given(oilRepository.findById(1L)).willReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> service.deleteOilImage(1L, 99L))
+                .isInstanceOf(ResourceNotFoundException.class);
+        then(fileStorageService).shouldHaveNoInteractions();
     }
 
     private Oil oil(Long id, String name) {

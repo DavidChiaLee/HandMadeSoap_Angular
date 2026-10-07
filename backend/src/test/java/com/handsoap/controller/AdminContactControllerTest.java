@@ -47,15 +47,34 @@ class AdminContactControllerTest {
             """;
 
     @Test
-    @DisplayName("應回傳全部聯絡資料")
+    @DisplayName("應回傳聯絡清單並套用分頁與 createdAt DESC 排序")
     @WithMockUser(roles = "ADMIN")
-    void shouldReturnAllContacts() throws Exception {
+    void shouldReturnAllContactsWithDefaultPaging() throws Exception {
+        given(contactService.getAllContacts(any()))
+                .willReturn(new PageImpl<>(List.of(Contact.builder().id(1L).name("王小明").build())));
+
+        mockMvc.perform(get("/api/v1/admin/contacts")
+                        .param("page", "0")
+                        .param("size", "20")
+                        .param("sort", "createdAt,desc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].name").value("王小明"));
+
+        verify(contactService).getAllContacts(any());
+    }
+
+    @Test
+    @DisplayName("未傳入分頁參數時仍應提供預設 createdAt DESC 分頁")
+    @WithMockUser(roles = "ADMIN")
+    void shouldApplyDefaultSortingAndPagingWhenNoPageableArgs() throws Exception {
         given(contactService.getAllContacts(any()))
                 .willReturn(new PageImpl<>(List.of(Contact.builder().id(1L).name("王小明").build())));
 
         mockMvc.perform(get("/api/v1/admin/contacts"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.content[0].name").value("王小明"));
+
+        verify(contactService).getAllContacts(any());
     }
 
     @Test

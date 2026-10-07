@@ -69,4 +69,12 @@ public class AdminOilController {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Image uploaded successfully", oil));
     }
+
+    @DeleteMapping("/{id}/images/{imageId}")
+    public ResponseEntity<ApiResponse<OilResponse>> deleteOilImage(
+            @PathVariable Long id,
+            @PathVariable Long imageId) {
+        OilResponse oil = oilService.deleteOilImage(id, imageId);
+        return ResponseEntity.ok(ApiResponse.success("Image deleted successfully", oil));
+    }
 }

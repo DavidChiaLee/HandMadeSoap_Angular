@@ -6,6 +6,7 @@ import com.handsoap.entity.Category;
 import com.handsoap.entity.EssentialOil;
 import com.handsoap.entity.Oil;
 import com.handsoap.entity.Soap;
+import com.handsoap.entity.SoapImage;
 import com.handsoap.exception.BadRequestException;
 import com.handsoap.exception.ResourceNotFoundException;
 import com.handsoap.repository.CategoryRepository;
@@ -127,7 +128,41 @@ public class SoapService {
     public void deleteSoap(Long id) {
         Soap soap = soapRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Soap not found with id: " + id));
+
+        // 先快取檔名再刪 DB：images 是 LAZY，transaction 結束後就存取不到；
+        // 檔案刪除排程到 commit 之後（見 FileStorageService.deleteFilesAfterCommit 的說明）。
+        List<String> imagePaths = soap.getImages().stream()
+                .map(SoapImage::getImagePath)
+                .toList();
+
         soapRepository.delete(soap);
+        fileStorageService.deleteFilesAfterCommit(imagePaths);
+    }
+
+    /**
+     * 刪除單張圖片（review M2：補上傳後無法移除個別圖片的缺口）。
+     *
+     * <p>{@code imageId} 必須屬於 {@code soapId}，否则回 404 —— 否則拿別人的
+     * {@code imageId} 配上自己的 {@code soapId} 可能誤刪他人物件的圖片。
+     * DB 列的移除由 {@code orphanRemoval = true} 負責（collection remove 即可），
+     * 檔案一樣排程到 commit 之後才刪。
+     */
+    public SoapResponse deleteSoapImage(Long soapId, Long imageId) {
+        Soap soap = soapRepository.findById(soapId)
+                .orElseThrow(() -> new ResourceNotFoundException("Soap not found with id: " + soapId));
+
+        SoapImage image = soap.getImages().stream()
+                .filter(img -> imageId.equals(img.getId()))
+                .findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Image not found with id: " + imageId + " for soap id: " + soapId));
+
+        String imagePath = image.getImagePath();
+        soap.getImages().remove(image); // orphanRemoval=true → commit 時刪列
+        soapRepository.save(soap);
+
+        fileStorageService.deleteFilesAfterCommit(List.of(imagePath));
+        return toResponse(soap);
     }
 
     private List<Oil> resolveOils(List<Long> oilIds) {

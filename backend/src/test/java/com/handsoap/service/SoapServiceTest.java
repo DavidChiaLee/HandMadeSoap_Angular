@@ -4,6 +4,7 @@ import com.handsoap.entity.Category;
 import com.handsoap.entity.EssentialOil;
 import com.handsoap.entity.Oil;
 import com.handsoap.entity.Soap;
+import com.handsoap.entity.SoapImage;
 import com.handsoap.exception.BadRequestException;
 import com.handsoap.exception.ResourceNotFoundException;
 import com.handsoap.repository.CategoryRepository;
@@ -26,6 +27,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 
@@ -159,6 +161,84 @@ class SoapServiceTest {
         service.deleteSoap(6L);
 
         then(soapRepository).should().delete(existing);
+    }
+
+    @Test
+    @DisplayName("刪除時應把所有圖檔路徑排程到 commit 後清理（review M2）")
+    void shouldScheduleImageFileDeletionAfterCommit() {
+        Soap existing = soap(6L, "薄荷皂");
+        existing.getImages().add(imageWith(1L, "a.png", existing));
+        existing.getImages().add(imageWith(2L, "b.webp", existing));
+        given(soapRepository.findById(6L)).willReturn(Optional.of(existing));
+
+        service.deleteSoap(6L);
+
+        then(soapRepository).should().delete(existing);
+        // 檔案刪除必須排程到 commit 之後（無活躍交易時 helper 會立即執行，
+        // 此斷言驗證的是「Service 有把路徑交出去」）
+        then(fileStorageService).should().deleteFilesAfterCommit(List.of("a.png", "b.webp"));
+    }
+
+    @Test
+    @DisplayName("刪除沒有圖片的資料時應以空清單呼叫清理（helper 對空清單不動作）")
+    void shouldPassEmptyListWhenSoapHasNoImages() {
+        Soap existing = soap(6L, "薄荷皂");
+        given(soapRepository.findById(6L)).willReturn(Optional.of(existing));
+
+        service.deleteSoap(6L);
+
+        then(fileStorageService).should().deleteFilesAfterCommit(List.of());
+    }
+
+    @Test
+    @DisplayName("刪除單張圖片：所屬正確時應移除該圖並排程清檔")
+    void shouldDeleteImageBelongingToSoap() {
+        Soap existing = soap(1L, "薰衣草皂");
+        SoapImage keep = imageWith(7L, "keep.png", existing);
+        SoapImage remove = imageWith(8L, "remove.png", existing);
+        existing.getImages().add(keep);
+        existing.getImages().add(remove);
+        given(soapRepository.findById(1L)).willReturn(Optional.of(existing));
+        given(soapRepository.save(any(Soap.class))).willAnswer(inv -> inv.getArgument(0));
+
+        var response = service.deleteSoapImage(1L, 8L);
+
+        assertThat(existing.getImages()).containsExactly(keep);
+        assertThat(response.getImages()).hasSize(1);
+        then(fileStorageService).should().deleteFilesAfterCommit(List.of("remove.png"));
+    }
+
+    @Test
+    @DisplayName("刪除單張圖片：imageId 不屬於該 soap 應拋 ResourceNotFoundException")
+    void shouldThrowWhenImageNotBelongingToSoap() {
+        Soap existing = soap(1L, "薰衣草皂");
+        existing.getImages().add(imageWith(7L, "keep.png", existing));
+        given(soapRepository.findById(1L)).willReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> service.deleteSoapImage(1L, 99L))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("99");
+        // 所屬驗證失敗時絕不可觸碰檔案系統
+        then(fileStorageService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("刪除單張圖片：soap 不存在應拋 ResourceNotFoundException")
+    void shouldThrowWhenSoapMissingOnImageDelete() {
+        given(soapRepository.findById(99L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.deleteSoapImage(99L, 1L))
+                .isInstanceOf(ResourceNotFoundException.class);
+        then(fileStorageService).shouldHaveNoInteractions();
+    }
+
+    private SoapImage imageWith(Long id, String path, Soap soap) {
+        return SoapImage.builder()
+                .id(id)
+                .imagePath(path)
+                .soap(soap)
+                .isPrimary(false)
+                .build();
     }
 
     private Soap soap(Long id, String name) {

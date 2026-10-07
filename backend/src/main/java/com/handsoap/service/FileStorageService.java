@@ -5,6 +5,8 @@ import com.handsoap.exception.BadRequestException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -14,9 +16,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 /**
  * 檔案儲存服務。
@@ -110,6 +115,120 @@ public class FileStorageService {
         } catch (IOException e) {
             throw new RuntimeException("Failed to delete file: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * 逐一刪除檔案但不讓任何單一失敗中斷流程（best-effort）。
+     *
+     * <p>用於「DB 已刪、檔案盡力清」的場景：{@link #deleteFile} 對不存在的檔案本來就
+     * 靜默成功，但路徑不合法（{@link BadRequestException}）或 IO 失敗（{@code RuntimeException}）
+     * 會往外拋。刪除商品是使用者看得到的操作，不該因為其中一張圖清不掉而回 500；
+     * 清不掉的殘檔是良性孤兒，交由排程掃描（OrphanFileCleanupTask）回收。
+     */
+    public void deleteFilesQuietly(Collection<String> filenames) {
+        if (filenames == null || filenames.isEmpty()) {
+            return;
+        }
+        for (String filename : filenames) {
+            try {
+                deleteFile(filename);
+            } catch (RuntimeException e) {
+                log.warn("刪除檔案失敗（將由孤兒檔掃描回收）：filename={} 原因={}", filename, e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * 排程到目前交易<b>成功 commit 之後</b>才逐一 {@link #deleteFile}（best-effort）。
+     *
+     * <p>為什麼不能在 transaction 內直接刪檔：檔案系統操作不可回滾 —— 若先刪檔、
+     * 隨後 commit 失敗（連線中斷、約束衝突），DB 列會指向不存在的檔案，前台直接破圖，
+     * 且這種「DB 有引用但檔案不在」的損壞孤兒掃描<b>無法修復</b>。
+     * 反向（commit 成功但刪檔失敗）只留下孤兒檔，良性且可被掃描回收，
+     * 因此失敗方向必須倒向「多留檔案」而非「多刪檔案」。
+     *
+     * <p>若目前沒有活躍交易同步（例如測試環境或非交易呼叫端），直接執行刪除。
+     *
+     * <p>{@code afterCommit} 內的例外不會影響已完成的交易，但會中斷同批剩餘檔案的刪除，
+     * 故呼叫端應傳入已過濾的清單，本方法內部再以 {@link #deleteFilesQuietly} 逐檔容錯。
+     */
+    public void deleteFilesAfterCommit(Collection<String> filenames) {
+        if (filenames == null || filenames.isEmpty()) {
+            return;
+        }
+        List<String> snapshot = List.copyOf(filenames);
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    deleteFilesQuietly(snapshot);
+                }
+            });
+        } else {
+            deleteFilesQuietly(snapshot);
+        }
+    }
+
+    /**
+     * 列出上傳根目錄下的一般檔案檔名（不含子目錄、不含路徑前綴）。
+     *
+     * <p>供孤兒檔掃描使用；目錄不存在時回傳空串列（尚未有任何上傳是正常狀態）。
+     * 掃描端只會對回傳值再呼叫 {@link #deleteFile}，後者有 {@code resolveInsideUploadDir}
+     * 圍堵，因此此處不需要額外的路徑驗證。
+     */
+    public List<String> listRootFilenames() {
+        Path root = uploadRoot();
+        if (!Files.isDirectory(root)) {
+            return List.of();
+        }
+        try (Stream<Path> entries = Files.list(root)) {
+            return entries.filter(Files::isRegularFile)
+                    .map(path -> path.getFileName().toString())
+                    .sorted()
+                    .toList();
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to list upload dir: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 回傳檔案的最後修改時間；檔案不存在（或名稱空白）回傳 {@code null}。
+     *
+     * <p>供孤兒檔掃描做寬限期判斷：上傳流程是「先寫檔、後 DB commit」，
+     * 剛落盤的檔案在引用查詢中還查不到，掃描必須跳過夠新的檔案才不會誤刪進行中的上傳。
+     * 路徑解析沿用 {@link #resolveInsideUploadDir}，即使參數來自被污染的 DB 值也逃不出上傳目錄。
+     */
+    public java.time.Instant lastModified(String filename) {
+        if (filename == null || filename.isBlank()) {
+            return null;
+        }
+        Path filePath = resolveInsideUploadDir(uploadRoot(), filename);
+        try {
+            return Files.getLastModifiedTime(filePath).toInstant();
+        } catch (java.nio.file.NoSuchFileException e) {
+            return null;
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to read file last modified time: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 判斷檔名的副檔名是否在 {@link #ALLOWED_EXTENSIONS} 白名單內（大小寫不敏感）。
+     *
+     * <p>供孤兒檔掃描收斂刪除範圍：掃描只會碰白名單型別，即使上傳目錄被手動放入
+     * 其他檔案（備份、編輯器暫存檔等）也不會被排程刪掉。
+     * 無副檔名或結尾為點的檔名一律回傳 {@code false}。
+     */
+    public boolean hasAllowedExtension(String filename) {
+        if (filename == null) {
+            return false;
+        }
+        int dotIndex = filename.lastIndexOf('.');
+        if (dotIndex < 0 || dotIndex == filename.length() - 1) {
+            return false;
+        }
+        String extension = filename.substring(dotIndex + 1).toLowerCase(Locale.ROOT);
+        return ALLOWED_EXTENSIONS.contains(extension);
     }
 
     /**

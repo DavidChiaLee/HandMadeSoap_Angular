@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.ArrayList;
+import java.util.List;
 
 @Service
 @Transactional
@@ -71,7 +72,37 @@ public class EssentialOilService {
     public void deleteEssentialOil(Long id) {
         EssentialOil essentialOil = essentialOilRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Essential oil not found with id: " + id));
+
+        // 先快取檔名再刪 DB（images 為 LAZY）；檔案刪除排程到 commit 之後
+        List<String> imagePaths = essentialOil.getImages().stream()
+                .map(EssentialOilImage::getImagePath)
+                .toList();
+
         essentialOilRepository.delete(essentialOil);
+        fileStorageService.deleteFilesAfterCommit(imagePaths);
+    }
+
+    /**
+     * 刪除單張圖片（review M2）。{@code imageId} 必須屬於 {@code essentialOilId}，否则回 404。
+     * DB 列由 {@code orphanRemoval = true} 負責，檔案排程到 commit 之後才刪。
+     */
+    public EssentialOilResponse deleteEssentialOilImage(Long essentialOilId, Long imageId) {
+        EssentialOil essentialOil = essentialOilRepository.findById(essentialOilId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Essential oil not found with id: " + essentialOilId));
+
+        EssentialOilImage image = essentialOil.getImages().stream()
+                .filter(img -> imageId.equals(img.getId()))
+                .findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Image not found with id: " + imageId + " for essential oil id: " + essentialOilId));
+
+        String imagePath = image.getImagePath();
+        essentialOil.getImages().remove(image);
+        essentialOilRepository.save(essentialOil);
+
+        fileStorageService.deleteFilesAfterCommit(List.of(imagePath));
+        return EssentialOilResponse.fromEntity(essentialOil);
     }
 
     public EssentialOilResponse uploadEssentialOilImage(Long essentialOilId, MultipartFile file, Integer sortOrder, Boolean isPrimary) {

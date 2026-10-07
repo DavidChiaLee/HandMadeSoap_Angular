@@ -19,6 +19,24 @@ import { Contact } from '../../shared/models/contact.model';
         {{ actionError }}
       </div>
 
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+        <div class="text-sm text-gray-500">共 {{ totalElements }} 筆資料</div>
+        <div class="flex gap-2">
+          <button
+            type="button"
+            class="btn-secondary !px-3 !py-1.5 text-sm"
+            [disabled]="page === 0"
+            (click)="goToPage(page - 1)">上一頁
+          </button>
+          <button
+            type="button"
+            class="btn-secondary !px-3 !py-1.5 text-sm"
+            [disabled]="page >= totalPages - 1"
+            (click)="goToPage(page + 1)">下一頁
+          </button>
+        </div>
+      </div>
+
       <div class="bg-white rounded-xl shadow-md overflow-hidden">
         <table class="w-full">
           <thead class="bg-gray-50">
@@ -93,20 +111,50 @@ export class ContactsComponent implements OnInit {
   selectedContact: Contact | null = null;
   actionError: string | null = null;
 
+  /** 分頁狀態 */
+  page = 0;
+  pageSize = 20;
+  totalPages = 0;
+  totalElements = 0;
+
   constructor(private apiService: ApiService) {}
 
   ngOnInit(): void {
     this.loadContacts();
   }
 
-  loadContacts(): void {
-    this.apiService.get<Contact[]>('admin/contacts').subscribe({
-      next: (data) => this.contacts = data,
+  /**
+   * 帶分頁參數載入聯絡清單。
+   * 每次翻頁會傳 page / size / sort，讓後端統一回傳
+   * {@code Page<Contact>} 並使用 {@code createdAt DESC} 預設排序。
+   */
+  loadContacts(p: number = this.page): void {
+    const params = new HttpParams()
+      .set('page', String(p))
+      .set('size', String(this.pageSize))
+      .set('sort', 'createdAt,desc');
+
+    this.apiService.getPage<Contact>('admin/contacts', params).subscribe({
+      next: (pg) => {
+        this.contacts = pg.content;
+        this.page = pg.number;
+        this.totalPages = pg.totalPages;
+        this.totalElements = pg.totalElements;
+      },
       error: (err) => {
         console.error('載入聯絡訊息失敗', err);
         this.contacts = [];
+        this.totalElements = 0;
+        this.totalPages = 0;
       }
     });
+  }
+
+  goToPage(p: number): void {
+    if (p < 0 || p >= this.totalPages) {
+      return;
+    }
+    this.loadContacts(p);
   }
 
   viewContact(contact: Contact): void {
@@ -125,7 +173,7 @@ export class ContactsComponent implements OnInit {
   toggleReplied(contact: Contact): void {
     const params = new HttpParams().set('isReplied', String(!contact.isReplied));
     this.apiService.put(`admin/contacts/${contact.id}/replied-status`, null, params).subscribe({
-      next: () => this.loadContacts(),
+      next: () => this.loadContacts(this.page),
       error: (err) => {
         console.error('切換回覆狀態失敗', err);
         this.actionError = ApiService.getErrorMessage(err, '更新回覆狀態失敗，請稍後再試');
@@ -136,7 +184,7 @@ export class ContactsComponent implements OnInit {
   deleteContact(id: number): void {
     if (confirm('確定要刪除此訊息嗎？')) {
       this.apiService.delete(`admin/contacts/${id}`).subscribe({
-        next: () => this.loadContacts(),
+        next: () => this.loadContacts(this.page),
         error: (err) => {
           console.error('刪除聯絡訊息失敗', err);
           this.actionError = ApiService.getErrorMessage(err, '刪除失敗，請稍後再試');

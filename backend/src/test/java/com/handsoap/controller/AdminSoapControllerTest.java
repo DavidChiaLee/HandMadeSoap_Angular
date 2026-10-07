@@ -114,6 +114,39 @@ class AdminSoapControllerTest {
     }
 
     @Test
+    @DisplayName("刪除單張圖片應呼叫 service 並回 200")
+    @WithMockUser(roles = "ADMIN")
+    void shouldDeleteSoapImage() throws Exception {
+        given(soapService.deleteSoapImage(1L, 7L)).willReturn(soap(1L, "薰衣草皂"));
+
+        mockMvc.perform(delete("/api/v1/admin/soaps/1/images/7"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.name").value("薰衣草皂"));
+
+        verify(soapService).deleteSoapImage(1L, 7L);
+    }
+
+    @Test
+    @DisplayName("刪除單張圖片：圖片不屬於該商品時應回 404")
+    @WithMockUser(roles = "ADMIN")
+    void shouldReturn404WhenImageMissing() throws Exception {
+        given(soapService.deleteSoapImage(1L, 99L))
+                .willThrow(new com.handsoap.exception.ResourceNotFoundException(
+                        "Image not found with id: 99 for soap id: 1"));
+
+        mockMvc.perform(delete("/api/v1/admin/soaps/1/images/99"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("刪除單張圖片未登入時應回 401")
+    void shouldReturn401WhenDeletingImageUnauthenticated() throws Exception {
+        mockMvc.perform(delete("/api/v1/admin/soaps/1/images/7"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     @DisplayName("未登入時應回 401")
     void shouldReturn401WhenUnauthenticated() throws Exception {
         mockMvc.perform(get("/api/v1/admin/soaps")).andExpect(status().isUnauthorized());

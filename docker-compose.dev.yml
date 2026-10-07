@@ -21,6 +21,10 @@
 # 正式主機需要用 GUI 工具連 DB 時「不需」也不應使用本檔，
 # 請改用 SSH tunnel（見 README「本地開發 › 資料庫連線」）。
 services:
+  backend:
+    ports:
+      - "127.0.0.1:8080:8080"
+
   mysql:
     ports:
       - "127.0.0.1:3307:3306"
