@@ -1,8 +1,9 @@
-version: "3.8"
-
 services:
   nginx:
     build: ./frontend
+    # review M7：異常退出與主機重啟後自動拉起。選 unless-stopped 而非 always：
+    # stop 手動停的不會被拉起來，符合維運預期。
+    restart: unless-stopped
     ports:
       - "80:80"
       # 刻意不發布 443（review H8，階段 1）。
@@ -26,25 +27,39 @@ services:
       # - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    # review M7：等 backend readiness（DB 就緒）後才啟，消除部署瞬間 502。
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - handsoap-net
 
   backend:
     build: ./backend
+    restart: unless-stopped
     # 刻意不發布對外埠：後端只透過 handsoap-net 內部通訊，對外一律走 nginx（80/443）。
     # 若這裡保留 ports，後端 API（含 /api/v1/admin/**）會直接暴露在公網，
     # 繞過 nginx 的 TLS 與任何存取控制，等同多開一個後門。
-    # 注意：目前 pom.xml 沒有 spring-boot-starter-actuator，/actuator/health 不存在。
-    # 日後若要加入 actuator 做健康檢查，SecurityConfig 已將 anyRequest() 改為
-    # authenticated()（review H3），/actuator/** 會預設需要認證，
-    # 必須顯式加上 requestMatchers("/actuator/health").permitAll() 才能讓探針使用。
+    # 健康探針（review M7）：打 /readiness 而非 /health —— readiness 含 DataSource
+    # 檢查，DB 未就緒前回 503；只打 /health（liveness 語意）擋不住 DB 未好就進流量。
+    # 探針不帶 JWT，依賴 SecurityConfig 對 /actuator/health 的 permitAll（僅 health，
+    # 不放整個 /actuator/**）。wget 由 backend/Dockerfile 以 apk 裝入
+    #（jre-alpine 預設無 curl/wget；用 127.0.0.1 避開 Alpine localhost 解析抖動）。
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/actuator/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
     environment:
       - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/handsoap?useSSL=false&serverTimezone=Asia/Taipei&allowPublicKeyRetrieval=true
       - SPRING_DATASOURCE_USERNAME=${DB_USER}
       - SPRING_DATASOURCE_PASSWORD=${DB_PASS}
-      - SPRING_JPA_HIBERNATE_DDL_AUTO=none
+      # schema 由 Flyway 版本控管（review M7），validate 做漂移偵測。
+      # none 是逃生門（本機除錯用），正式與容器一律 validate。
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=${HIBERNATE_DDL:-validate}
+      # Flyway 開關（正式一律 true；設 false 會回到無版本控管，僅供本機除錯）。
+      - SPRING_FLYWAY_ENABLED=${FLYWAY_ENABLED:-true}
       - JWT_SECRET=${JWT_SECRET}
       - FILE_UPLOAD_DIR=/app/uploads
       # CORS 白名單（review H4）：後端啟動時會驗證，不可含 *（含 * 直接啟動失敗）。
@@ -69,6 +84,7 @@ services:
 
   mysql:
     image: mysql:8.0
+    restart: unless-stopped
     # 刻意不發布對外埠（review H6）。雲主機公網 IP 下發布 3307 等於資料庫裸奔，
     # root 密碼強度會是唯一防線，違反最小暴露原則。
     #
@@ -103,6 +119,11 @@ services:
 
   backup:
     image: mysql:8.0
+    # review M7：主機重啟後自動恢復備份迴圈。注意此容器是 while-true shell loop，
+    # 暫態的 mysql 連不上已在腳本內重試而不退出；會退出的只剩 fatal
+    #（如 MYSQL_ROOT_PASSWORD 未設 → set -u 直接 exit），重啟後會變 tight
+    # crash-loop 刷 log —— 屬預期行為，修法是補上密碼而非拿掉 restart。
+    restart: unless-stopped
     depends_on:
       mysql:
         condition: service_healthy

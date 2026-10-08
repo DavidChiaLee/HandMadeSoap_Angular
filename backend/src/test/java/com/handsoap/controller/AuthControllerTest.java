@@ -3,6 +3,7 @@ package com.handsoap.controller;
 import com.handsoap.config.SecurityConfig;
 import com.handsoap.dto.LoginRequest;
 import com.handsoap.dto.LoginResponse;
+import com.handsoap.entity.Admin;
 import com.handsoap.service.AuthService;
 import com.handsoap.service.LoginAttemptService;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,16 +16,22 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Duration;
+import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -128,6 +135,39 @@ class AuthControllerTest {
         // 關鍵：被封鎖時<b>不應</b>呼叫 authService —— 否則限流等於形同虛設，
         // 每次還是會跑完整 BCrypt。
         verify(authService, times(0)).login(any(LoginRequest.class));
+    }
+
+    // ---- review M8 Phase 1：logout 撤銷 ----
+
+    @Test
+    @DisplayName("攜有效身分登出時應回 200 並呼叫撤銷（token_version bump）")
+    void shouldLogoutWithValidPrincipal() throws Exception {
+        Admin admin = Admin.builder().id(1L).username("admin").role("ADMIN").build();
+        Authentication auth = new UsernamePasswordAuthenticationToken(
+                admin, null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
+
+        mockMvc.perform(post("/api/v1/auth/logout").with(authentication(auth)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        verify(authService).logout("admin");
+    }
+
+    /**
+     * 匿名呼叫 logout 必須 401。
+     *
+     * <p>本端點在 /api/v1/auth/** 的 permitAll 區段內，身分只能來自
+     * JwtAuthFilter 解出的 principal —— 沒有 Bearer 就沒有 Admin principal，
+     * Controller 明確回 401。若這裡被放行，任何人都能用 username 參數
+     * bump 別人的 token_version（把全後台登出 = 拒絕服務）。</p>
+     */
+    @Test
+    @DisplayName("匿名呼叫 logout 應回 401 且不得 bump 任何帳號")
+    void shouldReturn401WhenLogoutWithoutAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/logout"))
+                .andExpect(status().isUnauthorized());
+
+        verify(authService, never()).logout(anyString());
     }
 
     @Test

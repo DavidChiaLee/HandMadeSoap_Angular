@@ -44,6 +44,23 @@
         </dependency>
 
         <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!-- Flyway（review M7）：schema 版本控管，消滅 Entity/SQL 漂移。
+             Boot 3.4 起 MySQL 支援已拆出 flyway-core，需另加 flyway-mysql，
+             只加 core 會在啟動時報 "No database plugin found"。版本由 parent 代管。 -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-mysql</artifactId>
+        </dependency>
+
+        <dependency>
             <groupId>com.mysql</groupId>
             <artifactId>mysql-connector-j</artifactId>
             <scope>runtime</scope>

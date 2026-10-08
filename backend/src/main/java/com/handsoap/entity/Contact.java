@@ -24,10 +24,10 @@ public class Contact {
     @Column(nullable = false, length = 100)
     private String name;
 
-    @Column(nullable = false, length = 100)
+    @Column(nullable = false, length = 200)
     private String email;
 
-    @Column(length = 20)
+    @Column(length = 50)
     private String phone;
 
     @Column(nullable = false, length = 200)

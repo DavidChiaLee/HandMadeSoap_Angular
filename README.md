@@ -296,8 +296,9 @@ Windows PowerShell 用 `$env:DATABASE_PASSWORD='...'` 設定，或把這些鍵�
 > 正式部署（`docker compose up`）刻意不發布 MySQL 對外埠，此時請改用容器內
 > `docker compose exec` 查詢，或走 SSH tunnel —— 詳見下方「資料庫連線」。
 >
-> 若只想改 schema 行為，可另設 `HIBERNATE_DDL=update`；預設為 `none`，
-> 因為資料表由 `mysql/init/01-schema.sql` 建立，`update` 會與其互相漂移。
+> 若只想改 schema 行為，可另設 `HIBERNATE_DDL=update`；預設為 `validate`，
+> 因為 schema 由 Flyway 版本控管（`backend/.../db/migration/V1/V2`），啟動時會做漂移偵測；
+> `update` 會讓 Hibernate 自動改表、與遷移腳本互相漂移，僅供本機除錯。
 
 ### 資料庫連線
 
@@ -388,7 +389,7 @@ pwsh ./scripts/verify-frontend-dist.ps1
 | `DATABASE_URL`      | 本機直跑 Spring Boot         | 資料庫連線字串     | `jdbc:mysql://localhost:3307/handsoap?...`（3307 需帶 `docker-compose.dev.yml`；正式部署無對外埠） |
 | `DATABASE_USERNAME` | 本機直跑 Spring Boot         | 資料庫使用者       | `root`                                      |
 | `DATABASE_PASSWORD` | 本機直跑 Spring Boot         | 資料庫密碼         | **無**；未設定會啟動失敗                    |
-| `HIBERNATE_DDL`     | 本機直跑 Spring Boot         | Hibernate schema 策略 | `none`                                   |
+| `HIBERNATE_DDL`     | 本機直跑 Spring Boot         | Hibernate schema 策略 | `validate`                               |
 | `SHOW_SQL`          | 本機直跑 Spring Boot         | 是否印出 SQL       | `false`                                     |
 | `FILE_UPLOAD_DIR`   | 容器／本機                   | 圖片上傳目錄       | `/app/uploads`                              |
 | `SERVER_PORT`       | 容器／本機                   | 後端埠號           | `8080`                                      |

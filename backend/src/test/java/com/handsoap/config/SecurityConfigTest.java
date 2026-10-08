@@ -87,20 +87,20 @@ class SecurityConfigTest {
     }
 
     /**
-     * {@code allowCredentials} 維持 false 是<b>刻意的</b>，不是疏忽。
+     * {@code allowCredentials} 為 true 是<b>刻意的</b>（M8 Phase 2 起），不是疏忽。
      *
      * <p>本系統以 JWT 認證，token 走 {@code Authorization} 標頭，前端沒有使用
      * {@code withCredentials}，因此不需要 cookie 型認證。若日後有人圖省事改成
      * {@code true}，會與白名單模式產生預期外的行為，這裡釘住現況。</p>
      */
     @Test
-    @DisplayName("allowCredentials 應維持 false（JWT 走 Authorization 標頭，非 cookie 認證）")
-    void shouldNotAllowCredentials() {
+    @DisplayName("allowCredentials 應為 true（M8 Phase 2：refresh token 走 HttpOnly Cookie，需跨站帶 Cookie）")
+    void shouldAllowCredentials() {
         CorsConfiguration cors = resolveApiCors();
 
         assertThat(Boolean.TRUE.equals(cors.getAllowCredentials()))
-                .as("本系統不使用 cookie 認證，開啟 credentials 只會增加風險")
-                .isFalse();
+                .as("refresh Cookie 需跨站傳送，credentials 必須開啟")
+                .isTrue();
     }
 
     /** SecurityConfig 宣告回傳 CorsConfigurationSource 介面，實際物件為 UrlBasedCorsConfigurationSource。 */
@@ -176,7 +176,9 @@ class SecurityConfigTest {
             "/api/v2/soaps",        // 版本前綴不同，不應被現有 matcher 誤放行
             "/api/v1/unknown",      // 未定義的 API
             "/internal/secret",     // 非 /api 前綴
-            "/actuator/health",     // 日後若引入 actuator，預設不應對外公開
+            // 注意：/actuator/health 曾在此列（預設不公開），但 review M7 引入
+            // actuator 後已顯式 permitAll 供 compose 探針使用，故移至下方
+            // shouldAllowAnonymousAccessToHealthEndpoint，見該處說明。
             "/",                    // 根路徑
             "/index.html"
     })
@@ -184,6 +186,32 @@ class SecurityConfigTest {
     void shouldDenyAnonymousAccessToUnlistedEndpoints(String path) throws Exception {
         mockMvc.perform(get(path))
                 .andExpect(status().isUnauthorized());
+    }
+
+    /**
+     * 健康探針必須匿名可達（review M7）。
+     *
+     * <p>compose healthcheck 打 {@code /actuator/health/readiness} 擋 nginx 進流量，
+     * 探針不帶 JWT —— 若此放行被移除，backend 永遠 unhealthy，nginx 也永遠不啟。
+     * 只放行 health（含子路徑）：打 {@code /actuator/env} 等仍須 401，
+     * 防止日後有人圖省事放行整個 {@code /actuator/**}。</p>
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "/actuator/health",
+            "/actuator/health/readiness",
+            "/actuator/health/liveness"
+    })
+    @DisplayName("健康探針應匿名可達（僅 health；其餘 actuator 端點仍須擋下）")
+    void shouldAllowAnonymousAccessToHealthEndpoint(String path) throws Exception {
+        int status = mockMvc.perform(get(path))
+                .andReturn()
+                .getResponse()
+                .getStatus();
+
+        assertThat(status)
+                .as("探針 %s 不應被授權擋下", path)
+                .isNotIn(HttpStatus.UNAUTHORIZED.value(), HttpStatus.FORBIDDEN.value());
     }
 
     /**

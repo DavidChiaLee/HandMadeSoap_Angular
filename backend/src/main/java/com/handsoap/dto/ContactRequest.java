@@ -19,10 +19,10 @@ public class ContactRequest {
 
     @NotBlank(message = "Email is required")
     @Email(message = "Email should be valid")
-    @Size(max = 100)
+    @Size(max = 200)
     private String email;
 
-    @Size(max = 20)
+    @Size(max = 50)
     private String phone;
 
     @NotBlank(message = "Subject is required")

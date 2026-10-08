@@ -80,6 +80,8 @@ class JwtAuthFilterTest {
         given(jwtUtil.extractUsername("valid-token")).willReturn("admin");
         given(adminRepository.findByUsername("admin")).willReturn(Optional.of(admin("admin")));
         given(jwtUtil.validateToken("valid-token", "admin")).willReturn(true);
+        // admin() 的 tokenVersion = 0（builder 預設）→ tv 相符
+        given(jwtUtil.extractTokenVersion("valid-token")).willReturn(0);
 
         runFilter(request);
 
@@ -89,6 +91,37 @@ class JwtAuthFilterTest {
         assertThat(auth.getAuthorities())
                 .extracting(a -> a.getAuthority())
                 .containsExactly("ROLE_ADMIN");
+    }
+
+    @Test
+    @DisplayName("tv 與 DB tokenVersion 不符（已撤銷）時不應建立 Authentication（review M8 Phase 1）")
+    void shouldNotAuthenticateWhenTokenVersionMismatch() throws Exception {
+        MockHttpServletRequest request = requestWithToken("stale-token");
+        given(jwtUtil.extractUsername("stale-token")).willReturn("admin");
+        // DB 仍是 0，token 帶 tv=3 → 代表 logout 已把 token_version bump 過
+        given(adminRepository.findByUsername("admin")).willReturn(Optional.of(admin("admin")));
+        given(jwtUtil.validateToken("stale-token", "admin")).willReturn(true);
+        given(jwtUtil.extractTokenVersion("stale-token")).willReturn(3);
+
+        runFilter(request);
+
+        // 不建立 Authentication → 受保護端點由 SecurityContext 機制回 401
+        assertThat(currentAuthentication()).isNull();
+    }
+
+    @Test
+    @DisplayName("無 tv claim 的舊版 token（extract 回 -1）不應通過（review M8）")
+    void shouldNotAuthenticateWhenTokenVersionClaimMissing() throws Exception {
+        MockHttpServletRequest request = requestWithToken("legacy-token");
+        given(jwtUtil.extractUsername("legacy-token")).willReturn("admin");
+        given(adminRepository.findByUsername("admin")).willReturn(Optional.of(admin("admin")));
+        given(jwtUtil.validateToken("legacy-token", "admin")).willReturn(true);
+        // -1 ≠ 0：Phase 1 上線前簽發的舊 token 全數失效（預期行為）
+        given(jwtUtil.extractTokenVersion("legacy-token")).willReturn(-1);
+
+        runFilter(request);
+
+        assertThat(currentAuthentication()).isNull();
     }
 
     @Test

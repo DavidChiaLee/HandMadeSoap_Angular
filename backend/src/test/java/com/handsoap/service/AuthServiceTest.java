@@ -21,6 +21,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
@@ -52,7 +53,7 @@ class AuthServiceTest {
         Authentication authentication = new UsernamePasswordAuthenticationToken("admin", null, java.util.List.of());
         given(authenticationManager.authenticate(any())).willReturn(authentication);
         given(adminRepository.findByUsername("admin")).willReturn(Optional.of(admin()));
-        given(jwtUtil.generateToken("admin", "ADMIN")).willReturn("signed-jwt");
+        given(jwtUtil.generateToken("admin", "ADMIN", 0)).willReturn("signed-jwt");
 
         var response = service.login(loginRequest("admin", "secret"));
 
@@ -68,7 +69,7 @@ class AuthServiceTest {
         Authentication authentication = new UsernamePasswordAuthenticationToken("admin", null, java.util.List.of());
         given(authenticationManager.authenticate(any())).willReturn(authentication);
         given(adminRepository.findByUsername("admin")).willReturn(Optional.of(admin()));
-        given(jwtUtil.generateToken(any(), any())).willReturn("signed-jwt");
+        given(jwtUtil.generateToken(any(), any(), anyInt())).willReturn("signed-jwt");
 
         service.login(loginRequest("admin", "secret"));
 
@@ -108,7 +109,7 @@ class AuthServiceTest {
         Authentication authentication = new UsernamePasswordAuthenticationToken("admin", null, java.util.List.of());
         given(authenticationManager.authenticate(any())).willReturn(authentication);
         given(adminRepository.findByUsername("admin")).willReturn(Optional.of(admin()));
-        given(jwtUtil.generateToken(any(), any())).willReturn("token");
+        given(jwtUtil.generateToken(any(), any(), anyInt())).willReturn("token");
 
         service.login(loginRequest("admin", "my-password"));
 
@@ -118,6 +119,37 @@ class AuthServiceTest {
         then(authenticationManager).should().authenticate(captor.capture());
         assertThat(captor.getValue().getPrincipal()).isEqualTo("admin");
         assertThat(captor.getValue().getCredentials()).isEqualTo("my-password");
+    }
+
+    /**
+     * logout 應將 token_version +1 並存回 DB（review M8 Phase 1）。
+     *
+     * <p>這是「登出後未過期 token 立即失效」的根源：JwtAuthFilter 比對
+     * tv claim 與此欄位，不符即不放行。bump 錯、漏存都會讓撤銷形同虛設。</p>
+     */
+    @Test
+    @DisplayName("logout 應將 token_version +1 並寫入（review M8 Phase 1）")
+    void shouldBumpTokenVersionOnLogout() {
+        given(adminRepository.findByUsername("admin")).willReturn(Optional.of(admin()));
+
+        service.logout("admin");
+
+        org.mockito.ArgumentCaptor<Admin> captor =
+                org.mockito.ArgumentCaptor.forClass(Admin.class);
+        then(adminRepository).should().save(captor.capture());
+        // admin() 建立時 tokenVersion = 0 → logout 後必須是 1
+        assertThat(captor.getValue().getTokenVersion()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("logout 查無帳號時應拋例外，不應默默 bump 別人")
+    void shouldThrowWhenLogoutAdminMissing() {
+        given(adminRepository.findByUsername("ghost")).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.logout("ghost"))
+                .isInstanceOf(RuntimeException.class);
+
+        then(adminRepository).should(never()).save(any(Admin.class));
     }
 
     private LoginRequest loginRequest(String username, String password) {

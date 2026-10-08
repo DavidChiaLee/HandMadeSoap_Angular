@@ -9,7 +9,9 @@ import { LoginRequest, LoginResponse } from '../models/login.model';
   providedIn: 'root'
 })
 export class AuthService {
-  private tokenKey = 'auth_token';
+  // 只存在記憶體（非 localStorage）→ 避免 XSS 竊取；15 分鐘內由
+  // /auth/refresh 自動續拿。登入頁重新整理也不會清掉 access token。
+  private accessToken: string | null = null;
   private userKey = 'current_user';
   private isAuthenticatedSubject = new BehaviorSubject<boolean>(this.hasToken());
 
@@ -37,8 +39,14 @@ export class AuthService {
     return this.apiService.post<LoginResponse>('auth/login', credentials).pipe(
       map(response => {
         if (response.accessToken) {
-          this.setToken(response.accessToken);
-          this.setUser(response);
+          // accessToken 只放記憶體，不落 localStorage（防 XSS）
+          this.accessToken = response.accessToken;
+          this.isAuthenticatedSubject.next(true);
+          // 只存可顯示欄位；refreshToken 在 HttpOnly Cookie，交給瀏覽器與後端處理。
+          this.setUser({
+            username: response.username,
+            role: response.role
+          });
         }
         return response;
       })
@@ -46,20 +54,53 @@ export class AuthService {
   }
 
   logout(): void {
-    localStorage.removeItem(this.tokenKey);
+    // 先通知後端撤銷（review M8 Phase 1+2）：bump admin.token_version 並作廢
+    // refresh DB 欄位 + 清 refresh Cookie。必須在清除記憶體 token「之前」發出 ——
+    // auth.interceptor 是從 getToken() 取 Bearer header 的，先清就送不出去了。
+    // best-effort：後端失敗（離線/token 已失效）仍要完成本機登出，
+    // 且錯誤刻意吞掉 —— 登出是終點，沒有值得回報的失敗。
+    const hadToken = this.getToken() !== null;
+    if (hadToken) {
+      // logout 仍帶 Bearer（靠記憶體 token），interceptor 會自動加 header；
+      // Cookie（refresh_token）由瀏覽器自動帶出（interceptor 統一加 withCredentials）。
+      this.apiService.post('auth/logout', {}).subscribe({ error: () => {} });
+    }
+    this.accessToken = null;
     localStorage.removeItem(this.userKey);
     this.isAuthenticatedSubject.next(false);
     this.currentUserSubject.next(null);
     this.router.navigate(['/admin/login']);
   }
 
+  /**
+   * 用 HttpOnly Cookie 的 refresh_token 換新 access token（M8 Phase 2）。
+   * 由 auth.interceptor 在 401 時呼叫；元件一般不直接呼叫。
+   * 成功時把新 access token 寫回記憶體並回傳；失敗時直接拋錯給 interceptor
+   * 觸發 logout（refresh 已失效 = 必須重新登入）。
+   */
+  refresh(): Observable<LoginResponse> {
+    // refresh_token 由瀏覽器經 Cookie 自動帶出（interceptor 統一加 withCredentials），
+    // 前端不讀不送 refresh token 本體。
+    return this.apiService.post<LoginResponse>('auth/refresh', {}).pipe(
+      map(response => {
+        if (response.accessToken) {
+          this.accessToken = response.accessToken;
+          this.isAuthenticatedSubject.next(true);
+        }
+        return response;
+      })
+    );
+  }
+
   setToken(token: string): void {
-    localStorage.setItem(this.tokenKey, token);
+    // 記憶體存 access token；不再寫 localStorage（防 XSS）。
+    this.accessToken = token;
     this.isAuthenticatedSubject.next(true);
   }
 
   getToken(): string | null {
-    return localStorage.getItem(this.tokenKey);
+    // 從記憶體取 access token；非 localStorage。
+    return this.accessToken;
   }
 
   setUser(user: any): void {
@@ -77,6 +118,6 @@ export class AuthService {
   }
 
   private hasToken(): boolean {
-    return !!localStorage.getItem(this.tokenKey);
+    return this.accessToken !== null;
   }
 }

@@ -103,6 +103,7 @@ CREATE TABLE IF NOT EXISTS soap_oils (
 );
 
 -- 9. Soap <-> Essential Oils ManyToMany（後台手工皂成分多選精油）
+-- 與 backend 的 V1__baseline.sql 保持一致；改表只加 V(n+1)，不同步改 V1。
 CREATE TABLE IF NOT EXISTS soap_essential_oils (
     soap_id BIGINT NOT NULL,
     essential_oil_id BIGINT NOT NULL,

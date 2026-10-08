@@ -116,6 +116,11 @@ public class SecurityConfig {
                 // 未登入使用者的任何 4xx/5xx 都會被改寫成 401 —— 真實錯誤碼被掩蓋，
                 // 且前端會誤導使用者「請重新登入」，反而更難排查。
                 .requestMatchers("/uploads/**", "/error").permitAll()
+                // 健康探針（review M7）：僅放行 health（含 /readiness、/liveness 子路徑），
+                // 供 compose healthcheck 打 /actuator/health/readiness 擋 nginx 進流量。
+                // 刻意不放整個 /actuator/**：env/beans/mappings 一旦有人加 include=*
+                // 就會全漏。anyRequest() 仍是 authenticated()（H3）維持 fail-closed。
+                .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                 // 首位管理員不再透過 HTTP 建立：原本這裡對 POST /api/v1/admin/admins
                 // permitAll，讓「部署後、owner 建立帳號前」 anyone 都能搶註 ADMIN（review C4）。
                 // 已改由 AdminBootstrapRunner 於啟動時建立，且由 /api/v1/admin/**
@@ -155,18 +160,18 @@ public class SecurityConfig {
     }
 
     /**
-     * CORS 設定（review H4）。
+     * CORS 設定（review H4，M8 Phase 2 更新）。
      *
      * <p>原本是 {@code setAllowedOrigins(List.of("*"))}：任何網站都能對公開端點
      * 發起跨站讀取（資料外洩）與寫入（例如把 {@code /api/v1/contacts} 當垃圾表單轟）。
      * 現改為由 {@code app.cors.allowed-origins} 注入的白名單。</p>
      *
-     * <p><b>allowCredentials 維持 false，不是疏忽。</b>本系統以 JWT 做認證，
-     * token 放在 {@code Authorization} 標頭，前端沒有使用 {@code withCredentials}
-     * （見 {@code frontend/src/app/app.config.ts}），因此不需要 cookie 型認證。
-     * 順帶釐清一個常見誤解：{@code *} 搭配 {@code allowCredentials(false)} 在
-     * CORS 規格上是合法的，Spring 只會在 {@code true} + {@code *} 時拋例外 ——
-     * 舊設定真正的問題純粹是「過度寬鬆」，不是「設定無效」。</p>
+     * <p><b>allowCredentials=true（M8 Phase 2 起）</b>：refresh token 走 HttpOnly
+     * Cookie，瀏覽器跨站（localhost:4200 → localhost:8080）送 Cookie 必須同時滿足：
+     * 後端 {@code allowCredentials(true)} + 前端請求 {@code withCredentials:true}。
+     * 為 false 時瀏覽器直接不帶 Cookie，/auth/refresh 永遠 401。
+     * 注意此時 allowedOrigins 不可為 {@code *}（Spring 會拋例外），
+     * 本專案已由白名單注入保證。</p>
      *
      * <p><b>CORS 不是存取控制，這點很重要。</b>它擋的是「第三方網頁借用使用者
      * 瀏覽器發出的請求」，攻擊者用 curl / Postman 直接打 API 完全不受影響。
@@ -181,7 +186,7 @@ public class SecurityConfig {
         configuration.setAllowedOrigins(allowedOrigins);
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
-        configuration.setAllowCredentials(false);
+        configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         // 只註冊 /api/**：/uploads/** 目前由前端 <img> 直接載入，本來就不走 CORS。

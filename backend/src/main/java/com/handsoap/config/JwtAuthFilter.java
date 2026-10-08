@@ -60,8 +60,15 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                         .findByUsername(username)
                         .orElse(null);
 
-                // Admin 存在，而且 JWT 驗證成功
-                if (admin != null && jwtUtil.validateToken(token, username)) {
+                // Admin 存在，JWT 驗證成功，且撤銷版本相符（review M8 Phase 1）
+                if (admin != null
+                        && jwtUtil.validateToken(token, username)
+                        && jwtUtil.extractTokenVersion(token) == admin.getTokenVersion()) {
+
+                    // tv 不符 = token 已被撤銷（logout / 離職 revoke 會 bump
+                    // token_version）→ 不建立 Authentication，
+                    // 對受保護端點由 SecurityContext 機制回 401。
+                    // 舊版 token 無 tv claim → extract 回 -1 → 必不符 → 全數失效（預期）。
 
                     // 建立角色
                     List<org.springframework.security.core.GrantedAuthority> authorities =

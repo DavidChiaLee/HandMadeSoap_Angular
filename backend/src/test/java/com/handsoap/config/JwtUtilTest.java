@@ -30,7 +30,7 @@ class JwtUtilTest {
     @Test
     @DisplayName("簽發的 token 應可解析出 username，並帶有 role claim")
     void shouldGenerateAndParseToken() {
-        String token = jwtUtil.generateToken("admin", "ADMIN");
+        String token = jwtUtil.generateToken("admin", "ADMIN", 0);
 
         assertThat(token).isNotBlank();
         assertThat(jwtUtil.extractUsername(token)).isEqualTo("admin");
@@ -40,7 +40,7 @@ class JwtUtilTest {
     @Test
     @DisplayName("role claim 應正確寫入 token")
     void shouldStoreRoleClaim() {
-        String token = jwtUtil.generateToken("staff", "ADMIN");
+        String token = jwtUtil.generateToken("staff", "ADMIN", 0);
 
         assertThat(secretKey().equals(Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8)))).isTrue();
         assertThat(token).isNotBlank();
@@ -48,9 +48,37 @@ class JwtUtilTest {
     }
 
     @Test
+    @DisplayName("tv claim 應帶入 tokenVersion 並可解析（review M8 Phase 1）")
+    void shouldStoreTokenVersionClaim() {
+        String token = jwtUtil.generateToken("admin", "ADMIN", 7);
+
+        assertThat(jwtUtil.extractTokenVersion(token)).isEqualTo(7);
+    }
+
+    @Test
+    @DisplayName("無 tv claim 的舊版 token 應解析回 -1（部署 Phase 1 後全數失效，review M8）")
+    void shouldReturnMinusOneWhenTokenVersionClaimMissing() {
+        String legacyToken = Jwts.builder()
+                .subject("admin")
+                .claim("role", "ADMIN")
+                .issuedAt(new Date())
+                .expiration(new Date(System.currentTimeMillis() + EXPIRATION_MS))
+                .signWith(secretKey())
+                .compact();
+
+        assertThat(jwtUtil.extractTokenVersion(legacyToken)).isEqualTo(-1);
+    }
+
+    @Test
+    @DisplayName("格式非法的 token 解析 tv 應回 -1 而非拋例外")
+    void shouldReturnMinusOneForMalformedToken() {
+        assertThat(jwtUtil.extractTokenVersion("not-a-jwt")).isEqualTo(-1);
+    }
+
+    @Test
     @DisplayName("username 不符時驗證應失敗")
     void shouldFailWhenUsernameMismatch() {
-        String token = jwtUtil.generateToken("admin", "ADMIN");
+        String token = jwtUtil.generateToken("admin", "ADMIN", 0);
 
         assertThat(jwtUtil.validateToken(token, "someoneElse")).isFalse();
     }
@@ -89,7 +117,7 @@ class JwtUtilTest {
     @Test
     @DisplayName("token 過期時間應依 expiration-ms 設定")
     void shouldUseConfiguredExpiration() {
-        String token = jwtUtil.generateToken("admin", "ADMIN");
+        String token = jwtUtil.generateToken("admin", "ADMIN", 0);
         Date expiration = Jwts.parser()
                 .verifyWith(secretKey())
                 .build()

@@ -113,6 +113,33 @@ describe('AuthService', () => {
     expect(router.navigate).toHaveBeenCalledWith(['/admin/login']);
   });
 
+  it('logout 應通知後端撤銷 token（review M8 Phase 1）', () => {
+    service.setToken('abc');
+
+    service.logout();
+
+    // 必須在清除 localStorage 之前發出，攔截器才取得到 Bearer header
+    expect(api.post).toHaveBeenCalledWith('auth/logout', {});
+  });
+
+  it('未登入時 logout 不應呼叫後端（避免匿名打 401）', () => {
+    service.logout();
+
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('後端撤銷失敗時仍應完成本機登出（best-effort，review M8 Phase 1）', () => {
+    service.setToken('abc');
+    service.setUser(loginResponse);
+    api.post.and.returnValue(throwError(() => new Error('network down')));
+
+    expect(() => service.logout()).not.toThrow();
+
+    expect(localStorage.getItem(tokenKey)).toBeNull();
+    expect(localStorage.getItem(userKey)).toBeNull();
+    expect(router.navigate).toHaveBeenCalledWith(['/admin/login']);
+  });
+
   it('currentUser$ 應在登入後發出使用者資料（含 username）', () => {
     // 必須 stub 回應帶 username：mockApiService 的預設回傳 of({})，
     // 沒有 accessToken 就不會呼叫 setUser()，測試會因空資料而失敗。

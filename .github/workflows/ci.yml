@@ -1,0 +1,155 @@
+# CI：讓 31+ 後端測試與 24 個前端 spec 每次 PR 都自動跑（review MCI）。
+#
+# 為什麼拆成 5 個 job 而非單一 job：
+#   - 平行跑，前端 npm ci（~1min）與後端 mvn（~2min）不互相拖時間。
+#   - 分支保護可以逐 job 要求綠燈（見檔尾 UI 步驟），壞掉時一眼看出是哪一層。
+#   - secrets / osv 很快（<1min），獨立 job 讓安全掃描的紅燈不被測試日誌淹沒。
+#
+# 分支保護（程式碼做不到，必須在 GitHub UI 按一次）：
+#   Settings → Branches → Add classic branch protection rule → Branch name pattern: main
+#     ☑ Require a pull request before merging
+#     ☑ Require status checks to pass before merging → 勾選以下 5 個：
+#         backend / frontend / compose-smoke / secrets / osv
+#     ☑ Dismiss stale pull request approvals when new commits are pushed
+#   注意：job 改名一次，保護就失效一次 —— 改名時記得同步更新 UI。
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      # repo 沒有 Maven wrapper（見 README：需本機 Maven 3.9+），CI 用 setup-java 內建 Maven。
+      # 長遠建議補 mvn wrapper 把版本釘住，否則本地與 CI 的 Maven 漂移會造成「本地綠、CI 紅」。
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+          cache: maven
+
+      # 不需要 MySQL service：全 repo 無 @SpringBootTest / @DataJpaTest（刻意，見
+      # HandSoapApplicationTest 註解——application.properties 指向 MySQL，啟 context
+      # 才需要 DB；現有測試全是 @WebMvcTest + mock）。日後若有人加整合測試，
+      # 才需要在這裡加 services: mysql:8.0 + DATABASE_PASSWORD / JWT_SECRET 假值，
+      # 而不是現在就加（省 30~60s 啟動時間）。
+      - name: Build and test
+        run: mvn -B verify
+
+  frontend:
+    name: frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # ubuntu runner 預設無 Chrome，karma-chrome-launcher 會報 Cannot find Chrome。
+      # karma.conf.js 的 ChromeHeadlessNoSandbox 已定義好，這裡只需把 Chrome 裝上，
+      # launcher 會自動偵測到（CHROME_BIN 是備案，不用手動設）。
+      - name: Set up Chrome
+        uses: browser-actions/setup-chrome@v1
+
+      # package-lock.json 已進版控，故用 npm ci（可重現 + 完整性校驗）；
+      # 與 frontend/Dockerfile 的 npm install 語意不同是已知落差（review M11），
+      # Dockerfile 改 npm ci 排在選修，不擋本次 CI 落地。
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit tests (Karma headless)
+        run: npm run test:ci
+
+      - name: Production build
+        run: npm run build -- --configuration production
+
+      # M12 的防線：fileReplacements 若掉了，產物會內嵌 environment.ts 的
+      # http://localhost:8080/api/v1，看起來合理、實際上線全壞。用 grep 釘住。
+      - name: Assert prod bundle has no localhost:8080
+        run: |
+          if grep -r "localhost:8080" dist/; then
+            echo "::error::prod 產物含 localhost:8080 —— angular.json 的 fileReplacements 可能掉了"
+            exit 1
+          fi
+          echo "prod bundle clean (no localhost:8080)"
+
+  compose-smoke:
+    name: compose-smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # compose 插值全是 ${DB_USER} / ${JWT_SECRET}。CI 沒有 .env（被 gitignore 排除是對的），
+      # 先用範例檔造一個假的——值全是 your_secure_* 佔位，只讓插值有值，
+      # 不進 image runtime，只是讓 build / config 跑得起來。
+      - name: Fake .env from example
+        run: cp .env.example .env
+
+      - name: Build all images
+        run: docker compose build
+
+      # H6 的防線（零成本）：正式檔不可含 DB 對外埠。dev 檔（127.0.0.1:3307）是另一個
+      # -f，本 job 刻意不帶它——帶了這個 grep 就會誤報。
+      - name: Assert no DB port published in deploy file
+        run: |
+          docker compose config > /tmp/compose-rendered.yml
+          if grep -q "published.*3307" /tmp/compose-rendered.yml; then
+            echo "::error::docker-compose.yml 含 3307 發布 —— H6 回歸（正式部署不可開 DB 埠）"
+            exit 1
+          fi
+          echo "compose config clean (no 3307 published)"
+
+  secrets:
+    name: secrets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 既有 pre-commit 腳本（.githooks/pre-commit 調的同一支）：掃 BCrypt、私鑰、
+      # token 與硬編碼密碼。runner 自帶 pwsh，無需安裝。發現即 exit 1 擋 PR。
+      - name: Scan for secrets
+        shell: pwsh
+        run: ./scripts/verify-no-secrets.ps1
+
+  osv:
+    name: osv
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Phase 1 只上 osv-scanner（掃 package-lock.json + pom.xml，無需 key，~2min，
+      # 誤報少，適合擋 PR）。OWASP dependency-check 刻意不放進 PR 擋線：
+      # 它要 NVD_API_KEY、下載全量 CVE DB（10min 起跳）、Java 誤報率高，
+      # 第一次跑沒 key 直接失敗會讓整個 CI 被誤判為不可用。排 Phase 2
+      #（schedule 每週 + 產 report artifact 不擋 merge），見 dependabot.yml 註解。
+      - name: Scan dependencies (OSV)
+        uses: google/osv-scanner-action@v1
+        with:
+          scan-args: --recursive .

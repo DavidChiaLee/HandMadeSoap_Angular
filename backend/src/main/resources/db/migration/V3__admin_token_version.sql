@@ -1,0 +1,14 @@
+-- V3__admin_token_version.sql（review M8 Phase 1）：token 撤銷版本號。
+--
+-- 為什麼用 DB 的 token_version 而非 Redis 黑名單：
+--   ① 單一實例、admin 數量極少，DB 天然是單一事實來源；
+--   ② JwtAuthFilter 每個請求本來就 findByUsername 載入 Admin，
+--      比對 tv claim 幾乎零成本（一般反對 version 方案的「多查一次 DB」顧慮不存在）。
+--
+-- 語意（刻意的取捨）：logout / 離職 revoke = token_version + 1
+--   → 該 admin 全部裝置的 token 同時失效。單一 owner 後台「全清」比「漏清」安全；
+--   要 per-session 撤銷需 refresh jti 資料表（Phase 2 之後再議）。
+--
+-- NOT NULL DEFAULT 0：存量列必須有預設值，否則 ALTER 當場失敗；
+--   0 對應「尚未撤銷過」，簽發 token 的 tv claim 也從 0 起跳。
+ALTER TABLE admins ADD COLUMN token_version INT NOT NULL DEFAULT 0;

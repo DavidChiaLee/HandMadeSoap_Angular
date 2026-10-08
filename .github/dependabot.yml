@@ -1,0 +1,31 @@
+# Dependabot：每週掃 npm + maven，發 PR 升級有漏洞的依賴（review L10）。
+#
+# 為什麼用它而非 CI 裡跑 OWASP dependency-check 擋 PR：
+#   - dependency-check 要 NVD_API_KEY、下載全量 CVE DB（10min 起跳）、Java 誤報率高，
+#     第一次跑沒 key 直接整條 CI 紅，會被誤判為「CI 不可用」。
+#   - Dependabot 由 GitHub 代管掃描，產的是「可合併的升級 PR」而非「擋線的紅燈」，
+#     搭配本 repo 的 CI（PR 自動跑 backend/frontend 測試）剛好形成閉環：
+#     升級 → CI 綠 → 合併；升級壞了 → CI 紅 → 不合併。
+#   - Phase 2 若仍要 dependency-check，建議排 schedule 每週跑 + 產 report artifact，
+#     不擋 merge，到時再加 .github/workflows/dependency-check.yml + NVD_API_KEY secret。
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:00"
+      timezone: Asia/Taipei
+    open-pull-requests-limit: 5
+    labels: [dependencies, frontend]
+
+  - package-ecosystem: maven
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:00"
+      timezone: Asia/Taipei
+    open-pull-requests-limit: 5
+    labels: [dependencies, backend]
