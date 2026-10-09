@@ -1,5 +1,6 @@
 package com.handsoap.controller;
 
+import com.handsoap.config.ClientIpResolver;
 import com.handsoap.dto.ApiResponse;
 import com.handsoap.dto.LoginRequest;
 import com.handsoap.dto.LoginResponse;
@@ -31,10 +32,15 @@ public class AuthController {
 
     private final AuthService authService;
     private final LoginAttemptService loginAttemptService;
+    private final ClientIpResolver clientIpResolver;
 
-    public AuthController(AuthService authService, LoginAttemptService loginAttemptService) {
+    public AuthController(
+            AuthService authService,
+            LoginAttemptService loginAttemptService,
+            ClientIpResolver clientIpResolver) {
         this.authService = authService;
         this.loginAttemptService = loginAttemptService;
+        this.clientIpResolver = clientIpResolver;
     }
 
     @PostMapping("/login")
@@ -44,7 +50,7 @@ public class AuthController {
             HttpServletResponse response) {
 
         String username = request.getUsername();
-        String clientIp = resolveClientIp(httpRequest);
+        String clientIp = clientIpResolver.resolve(httpRequest);
 
         // 先擋掉已被封鎖的嘗試：這一步刻意不碰 BCrypt，因此回應很快，
         // 與下面認證失敗的慢路徑（要跑完整 BCrypt）行為明顯不同。
@@ -161,28 +167,5 @@ public class AuthController {
                 .build();
         response.addHeader(HttpHeaders.SET_COOKIE, clearCookie.toString());
         return ResponseEntity.ok(ApiResponse.success("Logged out", null));
-    }
-
-    /**
-     * 取出用戶端 IP。
-     *
-     * <p>優先取 {@code X-Forwarded-For} 的<b>第一段</b>（最靠近客戶端的那個），
-     * 因為經過 nginx 反代時 {@code getRemoteAddr()} 拿到的是 nginx 的內部 IP，
-     * 若用它當限流 key，<b>所有使用者會共用同一個計數器</b> —— 等於全站只能失敗幾次。
-     *
-     * <p>安全提醒：{@code X-Forwarded-For} 可被客戶端偽造，這裡信任它的前提是
-     * 後端不直接對外（docker-compose 已刻意不發布 ports）。若日後後端開放對外，
-     * 必須改為信任來自已知名單 proxy 的標頭，或直接採用 {@code getRemoteAddr()}。</p>
-     */
-    private String resolveClientIp(HttpServletRequest request) {
-        String forwardedFor = request.getHeader("X-Forwarded-For");
-        if (forwardedFor != null && !forwardedFor.isBlank()) {
-            int comma = forwardedFor.indexOf(',');
-            String first = comma > 0 ? forwardedFor.substring(0, comma) : forwardedFor;
-            if (!first.isBlank()) {
-                return first.trim();
-            }
-        }
-        return request.getRemoteAddr();
     }
 }

@@ -78,9 +78,9 @@ jobs:
       - name: Set up Chrome
         uses: browser-actions/setup-chrome@v1
 
-      # package-lock.json 已進版控，故用 npm ci（可重現 + 完整性校驗）；
-      # 與 frontend/Dockerfile 的 npm install 語意不同是已知落差（review M11），
-      # Dockerfile 改 npm ci 排在選修，不擋本次 CI 落地。
+      # package-lock.json 已進版控，故用 npm ci（可重現 + 完整性校驗）。
+      # 與 frontend/Dockerfile 的落差（review M11）已閉環：Dockerfile 已改 npm ci，
+      # 兩端語意一致（見該檔 RUN npm ci 註解與 --ignore-scripts 的評估結論）。
       - name: Install dependencies
         run: npm ci
 

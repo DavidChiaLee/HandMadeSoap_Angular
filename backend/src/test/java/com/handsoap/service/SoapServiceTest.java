@@ -58,6 +58,58 @@ class SoapServiceTest {
     }
 
     @Test
+    @DisplayName("分類+關鍵字應使用 searchActiveSoapsByCategory（統一查詢組合分支）")
+    void shouldSearchByCategoryAndKeyword() {
+        Pageable pageable = PageRequest.of(0, 5);
+        given(soapRepository.searchActiveSoapsByCategory(7L, "玫瑰", pageable))
+                .willReturn(pageOf(soap(5L, "玫瑰皂")));
+
+        var result = service.searchFiltered(7L, "  玫瑰  ", pageable);
+
+        then(soapRepository).should().searchActiveSoapsByCategory(7L, "玫瑰", pageable);
+        assertThat(result.getContent()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("僅分類應走 getSoapsByCategory")
+    void shouldFilterByCategoryOnly() {
+        Pageable pageable = PageRequest.of(0, 5);
+        given(soapRepository.findByCategoryIdAndIsActiveTrue(7L, pageable))
+                .willReturn(pageOf(soap(2L, "分類皂")));
+
+        var result = service.searchFiltered(7L, "   ", pageable);
+
+        then(soapRepository).should().findByCategoryIdAndIsActiveTrue(7L, pageable);
+        assertThat(result.getContent()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("僅關鍵字應走多欄位 searchActiveSoaps")
+    void shouldFilterByKeywordOnly() {
+        Pageable pageable = PageRequest.of(0, 5);
+        given(soapRepository.searchActiveSoaps("玫瑰", pageable))
+                .willReturn(pageOf(soap(5L, "玫瑰皂")));
+
+        var result = service.searchFiltered(null, "玫瑰", pageable);
+
+        then(soapRepository).should().searchActiveSoaps("玫瑰", pageable);
+        assertThat(result.getContent()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("無參數應走全部（findByIsActiveTrue）")
+    void shouldReturnAllWhenNoFilter() {
+        Pageable pageable = PageRequest.of(0, 5);
+        given(soapRepository.findByIsActiveTrue(pageable))
+                .willReturn(pageOf(soap(3L, "橄欖皂")));
+
+        var result = service.searchFiltered(null, null, pageable);
+
+        then(soapRepository).should().findByIsActiveTrue(pageable);
+        assertThat(result.getContent()).hasSize(1);
+    }
+
+    @Test
     @DisplayName("名稱搜尋應把去除前後空白的關鍵字傳給 repository")
     void shouldSearchSoapsByNameWithTrimmedKeyword() {
         Pageable pageable = PageRequest.of(0, 5);

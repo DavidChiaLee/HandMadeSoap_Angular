@@ -1,5 +1,6 @@
 package com.handsoap.controller;
 
+import com.handsoap.config.ClientIpResolver;
 import com.handsoap.config.SecurityConfig;
 import com.handsoap.dto.LoginRequest;
 import com.handsoap.dto.LoginResponse;
@@ -38,7 +39,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(AuthController.class)
-@Import({SecurityConfig.class, ControllerTestSupport.class})
+@Import({SecurityConfig.class, ControllerTestSupport.class, ClientIpResolver.class})
 class AuthControllerTest {
 
     @Autowired

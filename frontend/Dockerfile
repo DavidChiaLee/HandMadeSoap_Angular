@@ -2,7 +2,16 @@
 FROM node:20-alpine AS build
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+# npm ci 而非 npm install（review M11 / 表 729）：
+#   - 嚴格依 package-lock.json 安裝，映像內容可重現，並做 lockfile 完整性校驗；
+#     npm install 每次依 semver 重新解析，同原始碼兩次 build 可能得到不同版本。
+#   - lock 與 package.json 不同步時直接失敗（fail-fast，早一步抓錯）。
+#   - CI（.github/workflows/ci.yml）已用 npm ci，兩端語意一致（該處註解已同步）。
+# --ignore-scripts 經評估「暫不採用」：lock 內有 6 個套件帶安裝腳本
+# （esbuild、lmdb、msgpackr-extract、nice-napi 等，Angular 18 的 ng build 底層
+# bundler 正是 esbuild），關掉腳本很可能讓建置失敗。若日後要開，必須先實測
+# `npm ci --ignore-scripts && npm run build` 通過再改，勿直接加參數。
+RUN npm ci
 COPY . .
 RUN npm run build
 

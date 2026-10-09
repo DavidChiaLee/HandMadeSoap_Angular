@@ -92,6 +92,39 @@ public class GlobalExceptionHandler {
                 .body(response);
     }
 
+    /**
+     * 聯絡表單送出過頻（review 728）→ 429，並附 {@code Retry-After}。
+     *
+     * <p>與登入 429 同理：與 400（改輸入）語意不同，必須讓使用者「等待」
+     * 而非重填表單。前端 contact.component.ts 讀取此標頭顯示等待秒數。</p>
+     */
+    @ExceptionHandler(TooManyContactSubmissionsException.class)
+    public ResponseEntity<Map<String, Object>> handleTooManyContactSubmissions(
+            TooManyContactSubmissionsException ex) {
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", false);
+        response.put("message", ex.getMessage());
+        response.put("data", null);
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(Math.max(ex.getRetryAfterSeconds(), 1)))
+                .body(response);
+    }
+
+    /**
+     * 內容重複的聯絡表單（review 728）→ 409。
+     *
+     * <p>與 429 不同：429 是「等一下再送新的」，409 是「你送的這則我們已經收
+     * 到了」—— 對使用者的行動指引完全不同，狀態碼不可混用。</p>
+     */
+    @ExceptionHandler(DuplicateContactException.class)
+    public ResponseEntity<Map<String, Object>> handleDuplicateContact(DuplicateContactException ex) {
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", false);
+        response.put("message", ex.getMessage());
+        response.put("data", null);
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+    }
+
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<Map<String, Object>> handleMaxUploadSizeExceeded(MaxUploadSizeExceededException ex) {
         log.warn("Upload file too large", ex);

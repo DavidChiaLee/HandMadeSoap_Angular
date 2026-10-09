@@ -35,9 +35,9 @@ class PublicSoapControllerTest {
     private SoapService soapService;
 
     @Test
-    @DisplayName("前台清單不需登入即可取得")
+    @DisplayName("前台清單不需登入即可取得（統一查詢：無參數走全部）")
     void shouldReturnSoapsWithoutAuthentication() throws Exception {
-        given(soapService.getAllSoaps(any())).willReturn(pageOf(soap(1L, "薰衣草皂")));
+        given(soapService.searchFiltered(eq(null), eq(null), any())).willReturn(pageOf(soap(1L, "薰衣草皂")));
 
         mockMvc.perform(get("/api/v1/soaps"))
                 .andExpect(status().isOk())
@@ -57,12 +57,12 @@ class PublicSoapControllerTest {
     @Test
     @DisplayName("依分類查詢應呼叫 getSoapsByCategory")
     void shouldReturnSoapsByCategory() throws Exception {
-        given(soapService.getSoapsByCategory(eq(7L), any())).willReturn(pageOf(soap(2L, "分類皂")));
+        given(soapService.searchFiltered(eq(7L), eq(null), any())).willReturn(pageOf(soap(2L, "分類皂")));
 
         mockMvc.perform(get("/api/v1/soaps/category/7"))
                 .andExpect(status().isOk());
 
-        verify(soapService).getSoapsByCategory(eq(7L), any());
+        verify(soapService).searchFiltered(eq(7L), eq(null), any());
     }
 
     @Test
@@ -76,13 +76,47 @@ class PublicSoapControllerTest {
     @Test
     @DisplayName("搜尋端點應呼叫 searchSoaps")
     void shouldSearchSoaps() throws Exception {
-        given(soapService.searchSoaps(eq("cedar"), any())).willReturn(pageOf(soap(3L, "雪松皂")));
+        given(soapService.searchFiltered(eq(null), eq("cedar"), any())).willReturn(pageOf(soap(3L, "雪松皂")));
 
         mockMvc.perform(get("/api/v1/soaps/search").param("keyword", "cedar"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.content[0].name").value("雪松皂"));
 
-        verify(soapService).searchSoaps(eq("cedar"), any());
+        verify(soapService).searchFiltered(eq(null), eq("cedar"), any());
+    }
+
+    @Test
+    @DisplayName("統一查詢：categoryId+keyword 應走 searchFiltered 組合分支")
+    void shouldSearchFilteredWithCategoryAndKeyword() throws Exception {
+        given(soapService.searchFiltered(eq(7L), eq("玫瑰"), any())).willReturn(pageOf(soap(5L, "玫瑰皂")));
+
+        mockMvc.perform(get("/api/v1/soaps").param("categoryId", "7").param("keyword", "玫瑰"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].name").value("玫瑰皂"));
+
+        verify(soapService).searchFiltered(eq(7L), eq("玫瑰"), any());
+    }
+
+    @Test
+    @DisplayName("統一查詢：僅 categoryId 應走分類分支")
+    void shouldSearchFilteredWithCategoryOnly() throws Exception {
+        given(soapService.searchFiltered(eq(7L), eq(null), any())).willReturn(pageOf(soap(2L, "分類皂")));
+
+        mockMvc.perform(get("/api/v1/soaps").param("categoryId", "7"))
+                .andExpect(status().isOk());
+
+        verify(soapService).searchFiltered(eq(7L), eq(null), any());
+    }
+
+    @Test
+    @DisplayName("統一查詢：僅 keyword 應走多欄位搜尋分支")
+    void shouldSearchFilteredWithKeywordOnly() throws Exception {
+        given(soapService.searchFiltered(eq(null), eq("玫瑰"), any())).willReturn(pageOf(soap(5L, "玫瑰皂")));
+
+        mockMvc.perform(get("/api/v1/soaps").param("keyword", "玫瑰"))
+                .andExpect(status().isOk());
+
+        verify(soapService).searchFiltered(eq(null), eq("玫瑰"), any());
     }
 
     @Test

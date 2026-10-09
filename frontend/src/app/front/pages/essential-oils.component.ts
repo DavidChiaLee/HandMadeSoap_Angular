@@ -14,7 +14,16 @@ import { EssentialOil } from '../../shared/models/essential-oil.model';
     <div class="max-w-7xl mx-auto px-4 py-8">
       <h1 class="text-3xl font-bold text-amber-900 mb-8">天然精油</h1>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+      <div *ngIf="isLoading" class="text-center py-12 text-gray-500">載入中...</div>
+
+      <div *ngIf="!isLoading && errorMessage" class="bg-red-50 border border-red-200 rounded-xl p-6 text-center mb-6">
+        <p class="text-red-700 mb-4">{{ errorMessage }}</p>
+        <button (click)="retry()" class="btn-primary">重試</button>
+      </div>
+
+      <div *ngIf="!isLoading && !errorMessage && essentialOils.length === 0" class="text-center py-12 text-gray-500">查無精油資料</div>
+
+      <div *ngIf="!isLoading && !errorMessage && essentialOils.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         <div *ngFor="let eo of essentialOils" class="bg-white rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-shadow">
           <div class="h-48 bg-amber-100 flex items-center justify-center">
             <img [src]="fileUrl(eo.images)" [alt]="eo.name" class="w-full h-full object-cover" loading="lazy">
@@ -47,6 +56,8 @@ export class EssentialOilsComponent implements OnInit {
   page = 0;
   pageSize = 8;
   totalPages = 0;
+  isLoading = false;
+  errorMessage: string | null = null;
 
   constructor(
     private apiService: ApiService,
@@ -63,18 +74,30 @@ export class EssentialOilsComponent implements OnInit {
   }
 
   loadEssentialOils(p: number = this.page): void {
+    this.isLoading = true;
+    this.errorMessage = null;
     const params = new HttpParams()
       .set('page', p)
       .set('size', this.pageSize)
       .set('sort', 'id,desc');
     this.apiService.getPage<EssentialOil>('essential-oils', params).subscribe({
       next: (pg) => {
+        this.isLoading = false;
         this.essentialOils = pg.content;
         this.page = pg.number;
         this.totalPages = pg.totalPages;
       },
-      error: () => this.loadMockEssentialOils(p)
+      error: (err) => {
+        this.isLoading = false;
+        this.essentialOils = [];
+        this.totalPages = 0;
+        this.errorMessage = ApiService.getErrorMessage(err, '載入精油失敗，請稍後再試');
+      }
     });
+  }
+
+  retry(): void {
+    this.loadEssentialOils(this.page);
   }
 
   goToPage(p: number): void {
@@ -126,22 +149,5 @@ export class EssentialOilsComponent implements OnInit {
     if (typeof n === 'number') {
       this.goToPage(n - 1);
     }
-  }
-
-  private loadMockEssentialOils(p: number): void {
-    const all = this.getMockEssentialOils();
-    this.totalPages = Math.ceil(all.length / this.pageSize);
-    this.page = Math.min(p, Math.max(0, this.totalPages - 1));
-    const start = this.page * this.pageSize;
-    this.essentialOils = all.slice(start, start + this.pageSize);
-  }
-
-  private getMockEssentialOils(): EssentialOil[] {
-    return [
-      { id: 1, name: '薰衣草精油', scentNotes: '舒緩放鬆', benefits: '幫助入睡、撫平情緒', precautions: '孕婦避免使用', isActive: true, images: [], createdAt: new Date(), updatedAt: new Date() },
-      { id: 2, name: '茶樹精油', scentNotes: '淨化抗菌', benefits: '清潔肌膚、抗菌', precautions: '需稀釋後使用', isActive: true, images: [], createdAt: new Date(), updatedAt: new Date() },
-      { id: 3, name: '檸檬精油', scentNotes: '清新提神', benefits: '提亮膚色、振奮精神', precautions: '光敏性，使用後避光', isActive: true, images: [], createdAt: new Date(), updatedAt: new Date() },
-      { id: 4, name: '玫瑰精油', scentNotes: '優雅花香', benefits: '滋潤保濕、舒緩情緒', precautions: '敏感肌膚先測試', isActive: true, images: [], createdAt: new Date(), updatedAt: new Date() }
-    ];
   }
 }

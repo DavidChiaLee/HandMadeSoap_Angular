@@ -14,7 +14,16 @@ import { Oil } from '../../shared/models/oil.model';
     <div class="max-w-7xl mx-auto px-4 py-8">
       <h1 class="text-3xl font-bold text-amber-900 mb-8">天然油品</h1>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+      <div *ngIf="isLoading" class="text-center py-12 text-gray-500">載入中...</div>
+
+      <div *ngIf="!isLoading && errorMessage" class="bg-red-50 border border-red-200 rounded-xl p-6 text-center mb-6">
+        <p class="text-red-700 mb-4">{{ errorMessage }}</p>
+        <button (click)="retry()" class="btn-primary">重試</button>
+      </div>
+
+      <div *ngIf="!isLoading && !errorMessage && oils.length === 0" class="text-center py-12 text-gray-500">查無油品資料</div>
+
+      <div *ngIf="!isLoading && !errorMessage && oils.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         <div *ngFor="let oil of oils" class="bg-white rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-shadow">
           <div class="h-48 bg-amber-100 flex items-center justify-center">
             <img [src]="fileUrl(oil.images)" [alt]="oil.name" class="w-full h-full object-cover" loading="lazy">
@@ -47,6 +56,8 @@ export class OilsComponent implements OnInit {
   page = 0;
   pageSize = 8;
   totalPages = 0;
+  isLoading = false;
+  errorMessage: string | null = null;
 
   constructor(
     private apiService: ApiService,
@@ -63,18 +74,30 @@ export class OilsComponent implements OnInit {
   }
 
   loadOils(p: number = this.page): void {
+    this.isLoading = true;
+    this.errorMessage = null;
     const params = new HttpParams()
       .set('page', p)
       .set('size', this.pageSize)
       .set('sort', 'id,desc');
     this.apiService.getPage<Oil>('oils', params).subscribe({
       next: (pg) => {
+        this.isLoading = false;
         this.oils = pg.content;
         this.page = pg.number;
         this.totalPages = pg.totalPages;
       },
-      error: () => this.loadMockOils(p)
+      error: (err) => {
+        this.isLoading = false;
+        this.oils = [];
+        this.totalPages = 0;
+        this.errorMessage = ApiService.getErrorMessage(err, '載入油品失敗，請稍後再試');
+      }
     });
+  }
+
+  retry(): void {
+    this.loadOils(this.page);
   }
 
   goToPage(p: number): void {
@@ -126,22 +149,5 @@ export class OilsComponent implements OnInit {
     if (typeof n === 'number') {
       this.goToPage(n - 1);
     }
-  }
-
-  private loadMockOils(p: number): void {
-    const all = this.getMockOils();
-    this.totalPages = Math.ceil(all.length / this.pageSize);
-    this.page = Math.min(p, Math.max(0, this.totalPages - 1));
-    const start = this.page * this.pageSize;
-    this.oils = all.slice(start, start + this.pageSize);
-  }
-
-  private getMockOils(): Oil[] {
-    return [
-      { id: 1, name: '橄欖油', origin: '西班牙', benefits: '富含維生素E和抗氧化物，深層滋潤肌膚', suitableFor: '乾性肌膚', isActive: true, images: [], createdAt: new Date(), updatedAt: new Date() },
-      { id: 2, name: '椰子油', origin: '菲律賓', benefits: '天然清潔力，泡沫豐富細緻', suitableFor: '所有肌膚', isActive: true, images: [], createdAt: new Date(), updatedAt: new Date() },
-      { id: 3, name: '棕櫚油', origin: '馬來西亞', benefits: '增加皂的硬度，延長使用時間', suitableFor: '皂化配方', isActive: true, images: [], createdAt: new Date(), updatedAt: new Date() },
-      { id: 4, name: '甜杏仁油', origin: '美國', benefits: '溫和親膚，適合敏感性肌膚', suitableFor: '敏感性肌膚', isActive: true, images: [], createdAt: new Date(), updatedAt: new Date() }
-    ];
   }
 }

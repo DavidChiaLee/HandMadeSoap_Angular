@@ -68,6 +68,25 @@ public class SoapService {
         return soapRepository.searchActiveSoapsByName(keyword.trim(), pageable).map(this::toResponse);
     }
 
+    /**
+     * 前台統一查詢：GET /api/v1/soaps?categoryId=&keyword=&page=&size=&sort=
+     * 四種組合皆合法，空白 keyword 視為未傳，isActive=true 由各 repository 方法保證。
+     */
+    public Page<SoapResponse> searchFiltered(Long categoryId, String keyword, Pageable pageable) {
+        boolean hasKeyword = keyword != null && !keyword.isBlank();
+        String trimmed = hasKeyword ? keyword.trim() : null;
+        if (categoryId != null && hasKeyword) {
+            return soapRepository.searchActiveSoapsByCategory(categoryId, trimmed, pageable).map(this::toResponse);
+        }
+        if (categoryId != null) {
+            return getSoapsByCategory(categoryId, pageable);
+        }
+        if (hasKeyword) {
+            return soapRepository.searchActiveSoaps(trimmed, pageable).map(this::toResponse);
+        }
+        return getAllSoaps(pageable);
+    }
+
     public Page<SoapResponse> getFeaturedSoaps(Pageable pageable) {
         return soapRepository.findByIsFeaturedTrueAndIsActiveTrue(pageable).map(this::toResponse);
     }

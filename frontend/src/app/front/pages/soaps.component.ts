@@ -19,6 +19,7 @@ import { Soap } from '../../shared/models/soap.model';
         <aside class="lg:w-64 flex-shrink-0">
           <div class="bg-white rounded-xl p-6 shadow-md">
             <h3 class="text-lg font-semibold text-amber-900 mb-4">分類篩選</h3>
+            <div *ngIf="categoryError" class="text-sm text-red-600 mb-2">{{ categoryError }} <button (click)="retryCategories()" class="underline">重試</button></div>
             <div class="space-y-2">
               <button (click)="filterByCategory(null)" [class.bg-amber-100]="!selectedCategory" class="w-full text-left px-4 py-2 rounded-lg hover:bg-amber-50 transition-colors">全部</button>
               <button *ngFor="let cat of categories" (click)="filterByCategory(cat.id)" [class.bg-amber-100]="selectedCategory === cat.id" class="w-full text-left px-4 py-2 rounded-lg hover:bg-amber-50 transition-colors">{{ cat.name }}</button>
@@ -34,7 +35,16 @@ import { Soap } from '../../shared/models/soap.model';
         </aside>
 
         <div class="flex-1">
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div *ngIf="isLoading" class="text-center py-12 text-gray-500">載入中...</div>
+
+          <div *ngIf="!isLoading && errorMessage" class="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
+            <p class="text-red-700 mb-4">{{ errorMessage }}</p>
+            <button (click)="retry()" class="btn-primary">重試</button>
+          </div>
+
+          <div *ngIf="!isLoading && !errorMessage && soaps.length === 0" class="text-center py-12 text-gray-500">查無符合的手工皂</div>
+
+          <div *ngIf="!isLoading && !errorMessage && soaps.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             <div *ngFor="let soap of soaps" class="bg-white rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-shadow">
               <div class="h-48 bg-amber-100 flex items-center justify-center">
                 <img [src]="fileUrl(soap.images)" [alt]="soap.name" class="w-full h-full object-cover" loading="lazy">
@@ -75,6 +85,9 @@ export class SoapsComponent implements OnInit {
   page = 0;
   pageSize = 8;
   totalPages = 0;
+  isLoading = false;
+  errorMessage: string | null = null;
+  categoryError: string | null = null;
 
   constructor(
     private apiService: ApiService,
@@ -96,19 +109,33 @@ export class SoapsComponent implements OnInit {
   }
 
   loadSoaps(p: number = this.page): void {
-    const endpoint = this.selectedCategory ? `soaps/category/${this.selectedCategory}` : 'soaps';
-    const params = new HttpParams()
+    this.isLoading = true;
+    this.errorMessage = null;
+    let params = new HttpParams()
       .set('page', p)
       .set('size', this.pageSize)
       .set('sort', this.getSortParam());
-    this.apiService.getPage<Soap>(endpoint, params).subscribe({
+    if (this.selectedCategory != null) {
+      params = params.set('categoryId', this.selectedCategory);
+    }
+    this.apiService.getPage<Soap>('soaps', params).subscribe({
       next: (pg) => {
+        this.isLoading = false;
         this.soaps = pg.content;
         this.page = pg.number;
         this.totalPages = pg.totalPages;
       },
-      error: () => this.loadMockSoaps(p)
+      error: (err) => {
+        this.isLoading = false;
+        this.soaps = [];
+        this.totalPages = 0;
+        this.errorMessage = ApiService.getErrorMessage(err, '載入手工皂失敗，請稍後再試');
+      }
     });
+  }
+
+  retry(): void {
+    this.loadSoaps(this.page);
   }
 
   private getSortParam(): string {
@@ -123,17 +150,18 @@ export class SoapsComponent implements OnInit {
   }
 
   loadCategories(): void {
+    this.categoryError = null;
     this.apiService.get<any[]>('categories').subscribe({
       next: (data) => this.categories = data,
-      error: () => {
-        this.categories = [
-          { id: 1, name: '滋潤型' },
-          { id: 2, name: '清潔型' },
-          { id: 3, name: '敏感型' },
-          { id: 4, name: '嬰兒型' }
-        ];
+      error: (err) => {
+        this.categories = [];
+        this.categoryError = ApiService.getErrorMessage(err, '分類載入失敗，請稍後再試');
       }
     });
+  }
+
+  retryCategories(): void {
+    this.loadCategories();
   }
 
   filterByCategory(categoryId: number | null): void {
@@ -194,40 +222,5 @@ export class SoapsComponent implements OnInit {
     if (typeof n === 'number') {
       this.goToPage(n - 1);
     }
-  }
-
-  private loadMockSoaps(p: number): void {
-    let filtered = this.getMockSoaps();
-
-    if (this.selectedCategory) {
-      filtered = filtered.filter(s => s.category && s.category.id === this.selectedCategory);
-    }
-
-    switch (this.sortBy) {
-      case 'price-low':
-        filtered.sort((a, b) => (a.price || 0) - (b.price || 0));
-        break;
-      case 'price-high':
-        filtered.sort((a, b) => (b.price || 0) - (a.price || 0));
-        break;
-      default:
-        filtered.sort((a, b) => a.name.localeCompare(b.name));
-    }
-
-    this.totalPages = Math.ceil(filtered.length / this.pageSize);
-    this.page = Math.min(p, Math.max(0, this.totalPages - 1));
-    const start = this.page * this.pageSize;
-    this.soaps = filtered.slice(start, start + this.pageSize);
-  }
-
-  private getMockSoaps(): Soap[] {
-    return [
-      { id: 1, name: '薰衣草舒緩皂', shortDescription: '添加薰衣草精油，幫助放鬆身心', fullDescription: '', price: 180, weight: '100g', dimensions: '', usageInstructions: '', storageInstructions: '', ingredients: '', features: '', isFeatured: true, isActive: true, category: { id: 1, name: '滋潤型' }, images: [], createdAt: new Date(), updatedAt: new Date() },
-      { id: 2, name: '茶樹淨膚皂', shortDescription: '深層清潔，適合油性肌膚', fullDescription: '', price: 150, weight: '100g', dimensions: '', usageInstructions: '', storageInstructions: '', ingredients: '', features: '', isFeatured: true, isActive: true, category: { id: 2, name: '清潔型' }, images: [], createdAt: new Date(), updatedAt: new Date() },
-      { id: 3, name: '玫瑰保濕皂', shortDescription: '溫和保濕，散發玫瑰香氣', fullDescription: '', price: 200, weight: '100g', dimensions: '', usageInstructions: '', storageInstructions: '', ingredients: '', features: '', isFeatured: true, isActive: true, category: { id: 1, name: '滋潤型' }, images: [], createdAt: new Date(), updatedAt: new Date() },
-      { id: 4, name: '檸檬亮膚皂', shortDescription: '提亮膚色，清新檸檬香', fullDescription: '', price: 160, weight: '100g', dimensions: '', usageInstructions: '', storageInstructions: '', ingredients: '', features: '', isFeatured: false, isActive: true, category: { id: 2, name: '清潔型' }, images: [], createdAt: new Date(), updatedAt: new Date() },
-      { id: 5, name: '燕麥溫和皂', shortDescription: '極度溫和，適合敏感性肌膚', fullDescription: '', price: 170, weight: '100g', dimensions: '', usageInstructions: '', storageInstructions: '', ingredients: '', features: '', isFeatured: false, isActive: true, category: { id: 3, name: '敏感型' }, images: [], createdAt: new Date(), updatedAt: new Date() },
-      { id: 6, name: '嬰兒洗顏皂', shortDescription: '專為嬰兒設計，無刺激', fullDescription: '', price: 220, weight: '80g', dimensions: '', usageInstructions: '', storageInstructions: '', ingredients: '', features: '', isFeatured: false, isActive: true, category: { id: 4, name: '嬰兒型' }, images: [], createdAt: new Date(), updatedAt: new Date() }
-    ];
   }
 }

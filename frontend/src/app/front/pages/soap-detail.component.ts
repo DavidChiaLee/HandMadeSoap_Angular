@@ -49,15 +49,27 @@ import { Soap } from '../../shared/models/soap.model';
       </div>
     </div>
 
-    <div class="max-w-7xl mx-auto px-4 py-8" *ngIf="!soap">
+    <div class="max-w-7xl mx-auto px-4 py-8" *ngIf="!soap && isLoading">
       <div class="text-center py-12">
         <p class="text-gray-500">載入中...</p>
+      </div>
+    </div>
+
+    <div class="max-w-7xl mx-auto px-4 py-8" *ngIf="!soap && !isLoading && errorMessage">
+      <div class="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
+        <p class="text-red-700 mb-4">{{ errorMessage }}</p>
+        <div class="flex gap-4 justify-center">
+          <button (click)="retry()" class="btn-primary">重試</button>
+          <a routerLink="/soaps" class="btn-secondary">返回列表</a>
+        </div>
       </div>
     </div>
   `
 })
 export class SoapDetailComponent implements OnInit {
   soap: Soap | null = null;
+  isLoading = false;
+  errorMessage: string | null = null;
 
   constructor(
     private route: ActivatedRoute,
@@ -73,10 +85,30 @@ export class SoapDetailComponent implements OnInit {
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id');
     if (id) {
-      this.apiService.get<Soap>(`soaps/${id}`).subscribe({
-        next: (data) => this.soap = data,
-        error: () => this.soap = this.getMockSoap()
-      });
+      this.loadSoap(id);
+    }
+  }
+
+  loadSoap(id: string): void {
+    this.isLoading = true;
+    this.errorMessage = null;
+    this.soap = null;
+    this.apiService.get<Soap>(`soaps/${id}`).subscribe({
+      next: (data) => {
+        this.isLoading = false;
+        this.soap = data;
+      },
+      error: (err) => {
+        this.isLoading = false;
+        this.errorMessage = ApiService.getErrorMessage(err, '載入商品失敗，請稍後再試');
+      }
+    });
+  }
+
+  retry(): void {
+    const id = this.route.snapshot.paramMap.get('id');
+    if (id) {
+      this.loadSoap(id);
     }
   }
 
@@ -86,34 +118,5 @@ export class SoapDetailComponent implements OnInit {
 
   getEssentialOilNames(): string {
     return (this.soap?.essentialOils ?? []).map(o => o.name).join('、');
-  }
-
-  private getMockSoap(): Soap {
-    return {
-      id: 1,
-      name: '薰衣草舒緩皂',
-      shortDescription: '採用法國薰衣草精油與天然植物油製作，泡沫細緻溫和，能幫助放鬆身心、舒緩肌膚疲勞。適合一般膚質使用。',
-      fullDescription: '完整描述',
-      price: 180,
-      weight: '100g',
-      dimensions: '',
-      usageInstructions: '將皂沾水搓揉起泡後，塗抹於臉部或身體，按摩片刻後用清水沖洗乾淨。',
-      storageInstructions: '請置於乾燥通風處，避免積水。',
-      ingredients: '氫氧化鈉、純水',
-      features: '',
-      oils: [
-        { id: 1, name: '椰子油' },
-        { id: 2, name: '棕櫚油' },
-        { id: 3, name: '橄欖油' },
-        { id: 4, name: '葵花籽油' }
-      ],
-      essentialOils: [{ id: 1, name: '薰衣草精油' }],
-      isFeatured: true,
-      isActive: true,
-      category: { id: 1, name: '滋潤型' },
-      images: [],
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
   }
 }

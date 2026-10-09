@@ -2,6 +2,7 @@ package com.handsoap.service;
 
 import com.handsoap.dto.ContactRequest;
 import com.handsoap.entity.Contact;
+import com.handsoap.exception.DuplicateContactException;
 import com.handsoap.exception.ResourceNotFoundException;
 import com.handsoap.repository.ContactRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,14 +16,18 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class ContactServiceTest {
@@ -34,7 +39,35 @@ class ContactServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ContactService(contactRepository);
+        service = new ContactService(contactRepository, 10);
+    }
+
+    @Test
+    @DisplayName("窗口內重複內容（同 email+主旨+內容）應拋 DuplicateContactException 且不寫庫")
+    void shouldRejectDuplicateContactWithinWindow() {
+        given(contactRepository.existsByEmailIgnoreCaseAndSubjectAndMessageAndCreatedAtAfter(
+                anyString(), anyString(), anyString(), any(LocalDateTime.class)))
+                .willReturn(true);
+
+        assertThatThrownBy(() -> service.saveContact(request()))
+                .isInstanceOf(DuplicateContactException.class)
+                .hasMessageContaining("相同訊息");
+
+        // 重複時絕不可寫庫（BDDMockito.then 沒有 shouldNever，改用原生 verify）
+        verify(contactRepository, never()).save(any(Contact.class));
+    }
+
+    @Test
+    @DisplayName("非重複內容應照常存檔（去重比對失敗時預設放行）")
+    void shouldSaveNonDuplicateContact() {
+        // exists 查詢未 stub → Mockito 佈林預設 false = 沒有重複
+        given(contactRepository.save(any(Contact.class))).willAnswer(inv -> {
+            Contact saved = inv.getArgument(0);
+            saved.setId(7L);
+            return saved;
+        });
+
+        assertThat(service.saveContact(request()).getId()).isEqualTo(7L);
     }
 
     @Test

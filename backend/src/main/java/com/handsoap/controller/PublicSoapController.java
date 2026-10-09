@@ -19,8 +19,11 @@ public class PublicSoapController {
     }
 
     @GetMapping
-    public ResponseEntity<ApiResponse<Page<SoapResponse>>> getAllSoaps(Pageable pageable) {
-        Page<SoapResponse> soaps = soapService.getAllSoaps(pageable);
+    public ResponseEntity<ApiResponse<Page<SoapResponse>>> getAllSoaps(
+            @RequestParam(value = "categoryId", required = false) Long categoryId,
+            @RequestParam(value = "keyword", required = false) String keyword,
+            Pageable pageable) {
+        Page<SoapResponse> soaps = soapService.searchFiltered(categoryId, keyword, pageable);
         return ResponseEntity.ok(ApiResponse.success(soaps));
     }
 
@@ -30,15 +33,17 @@ public class PublicSoapController {
         return ResponseEntity.ok(ApiResponse.success(soap));
     }
 
+    @Deprecated
     @GetMapping("/category/{categoryId}")
     public ResponseEntity<ApiResponse<Page<SoapResponse>>> getSoapsByCategory(@PathVariable Long categoryId, Pageable pageable) {
-        Page<SoapResponse> soaps = soapService.getSoapsByCategory(categoryId, pageable);
+        Page<SoapResponse> soaps = soapService.searchFiltered(categoryId, null, pageable);
         return ResponseEntity.ok(ApiResponse.success(soaps));
     }
 
+    @Deprecated
     @GetMapping("/search")
     public ResponseEntity<ApiResponse<Page<SoapResponse>>> searchSoaps(@RequestParam String keyword, Pageable pageable) {
-        Page<SoapResponse> soaps = soapService.searchSoaps(keyword, pageable);
+        Page<SoapResponse> soaps = soapService.searchFiltered(null, keyword, pageable);
         return ResponseEntity.ok(ApiResponse.success(soaps));
     }
 

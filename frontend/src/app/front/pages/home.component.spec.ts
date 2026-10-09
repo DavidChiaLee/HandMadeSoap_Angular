@@ -65,14 +65,24 @@ describe('HomeComponent', () => {
       expect(api.getPage.calls.mostRecent().args[0]).toBe('soaps');
     });
 
-    it('精選與最新商品都失敗時應退回內建假資料避免頁面空白', () => {
+    it('精選與最新商品都失敗時應顯示錯誤並可重試，而非餵假資料', () => {
       api.getPage.and.returnValue(throwError(() => new Error('network')));
       api.get.and.returnValue(of([]));
 
       component.ngOnInit();
 
-      expect(component.featuredSoaps.length).toBeGreaterThan(0);
-      expect(component.featuredSoaps[0].name).toBe('薰衣草舒緩皂');
+      expect(component.featuredSoaps).toEqual([]);
+      expect(component.featuredError).toBeTruthy();
+    });
+
+    it('精選與最新商品都失敗時應顯示錯誤並可重試，而非餵假資料', () => {
+      api.getPage.and.returnValue(throwError(() => new Error('network')));
+      api.get.and.returnValue(of([]));
+
+      component.ngOnInit();
+
+      expect(component.featuredSoaps).toEqual([]);
+      expect(component.featuredError).toBeTruthy();
     });
 
     it('請求精選商品時應帶入 page=0 與 size=6', () => {
@@ -126,14 +136,14 @@ describe('HomeComponent', () => {
       expect(component.categories[0].name).toBe('無排序');
     });
 
-    it('分類請求失敗時應退回內建分類避免頁面空白', () => {
+    it('分類請求失敗時應顯示錯誤並可重試，而非餵假分類', () => {
       api.getPage.and.returnValue(of(makePage([])));
       api.get.and.returnValue(throwError(() => new Error('network')));
 
       component.ngOnInit();
 
-      expect(component.categories.length).toBe(5);
-      expect(component.categories[0].name).toBe('一般家事皂');
+      expect(component.categories).toEqual([]);
+      expect(component.categoryError).toBeTruthy();
     });
 
     it('應向 categories 端點請求分類', () => {

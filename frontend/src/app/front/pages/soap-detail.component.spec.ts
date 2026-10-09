@@ -56,14 +56,14 @@ describe('SoapDetailComponent', () => {
       expect(api.get).not.toHaveBeenCalled();
     });
 
-    it('請求失敗時應退回展示用假資料', () => {
+    it('請求失敗時應顯示錯誤並可重試，而非餵假資料', () => {
       api.get.and.returnValue(throwError(() => new Error('network')));
 
       create();
       component.ngOnInit();
 
-      expect(component.soap).toBeTruthy();
-      expect(component.soap?.name).toBe('薰衣草舒緩皂');
+      expect(component.soap).toBeNull();
+      expect(component.errorMessage).toBeTruthy();
     });
 
     it('請求尚未回應時應顯示載入中訊息', () => {

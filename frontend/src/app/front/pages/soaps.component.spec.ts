@@ -47,14 +47,14 @@ describe('SoapsComponent', () => {
       expect(api.getPage).toHaveBeenCalled();
     });
 
-    it('分類載入失敗時應退回內建假分類避免篩選區空白', () => {
+    it('分類載入失敗時應顯示錯誤並可重試，而非餵假分類', () => {
       api.get.and.returnValue(throwError(() => new Error('network')));
       api.getPage.and.returnValue(of(makePage([])));
 
       component.ngOnInit();
 
-      expect(component.categories.length).toBe(4);
-      expect(component.categories[0].name).toBe('滋潤型');
+      expect(component.categories).toEqual([]);
+      expect(component.categoryError).toBeTruthy();
     });
 
     it('應以 page/size/sort 參數載入手工皂', () => {
@@ -204,15 +204,42 @@ describe('SoapsComponent', () => {
     });
   });
 
-  describe('無後端時的展示資料', () => {
-    it('列表請求失敗時應退回內建假資料而非空白', () => {
+  describe('載入失敗', () => {
+    it('列表請求失敗時應顯示錯誤並可重試，而非餵假資料', () => {
       api.get.and.returnValue(of([]));
       api.getPage.and.returnValue(throwError(() => new Error('network')));
 
       component.ngOnInit();
 
-      expect(component.soaps.length).toBeGreaterThan(0);
-      expect(component.totalPages).toBeGreaterThan(0);
+      expect(component.soaps).toEqual([]);
+      expect(component.totalPages).toBe(0);
+      expect(component.errorMessage).toBeTruthy();
+    });
+
+    it('重試應以目前頁碼重新請求', () => {
+      api.get.and.returnValue(of([]));
+      api.getPage.and.returnValue(throwError(() => new Error('network')));
+      component.ngOnInit();
+      api.getPage.calls.reset();
+      api.getPage.and.returnValue(of(makePage([])));
+
+      component.retry();
+
+      expect(api.getPage).toHaveBeenCalled();
+    });
+
+    it('選擇分類後應以 categoryId 查詢參數打統一 soaps 端點', () => {
+      api.get.and.returnValue(of([]));
+      api.getPage.and.returnValue(of(makePage([])));
+      component.ngOnInit();
+      api.getPage.calls.reset();
+
+      component.filterByCategory(2);
+
+      const args = api.getPage.calls.mostRecent().args;
+      expect(args[0]).toBe('soaps');
+      expect(args[1]?.get('categoryId')).toBe('2');
+      expect(args[1]?.get('page')).toBe('0');
     });
   });
 

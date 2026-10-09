@@ -37,15 +37,27 @@ import { EssentialOil } from '../../shared/models/essential-oil.model';
       </div>
     </div>
 
-    <div class="max-w-7xl mx-auto px-4 py-8" *ngIf="!essentialOil">
+    <div class="max-w-7xl mx-auto px-4 py-8" *ngIf="!essentialOil && isLoading">
       <div class="text-center py-12">
         <p class="text-gray-500">載入中...</p>
+      </div>
+    </div>
+
+    <div class="max-w-7xl mx-auto px-4 py-8" *ngIf="!essentialOil && !isLoading && errorMessage">
+      <div class="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
+        <p class="text-red-700 mb-4">{{ errorMessage }}</p>
+        <div class="flex gap-4 justify-center">
+          <button (click)="retry()" class="btn-primary">重試</button>
+          <a routerLink="/essential-oils" class="btn-secondary">返回列表</a>
+        </div>
       </div>
     </div>
   `
 })
 export class EssentialOilDetailComponent implements OnInit {
   essentialOil: EssentialOil | null = null;
+  isLoading = false;
+  errorMessage: string | null = null;
 
   constructor(
     private route: ActivatedRoute,
@@ -61,24 +73,30 @@ export class EssentialOilDetailComponent implements OnInit {
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id');
     if (id) {
-      this.apiService.get<EssentialOil>(`essential-oils/${id}`).subscribe({
-        next: (data) => this.essentialOil = data,
-        error: () => this.essentialOil = this.getMockEssentialOil()
-      });
+      this.loadEssentialOil(id);
     }
   }
 
-  private getMockEssentialOil(): EssentialOil {
-    return {
-      id: 1,
-      name: '薰衣草精油',
-      scentNotes: '法國薰衣草精油，採用水蒸餾法萃取，香氣溫和舒緩',
-      benefits: '舒緩放鬆、幫助入睡、撫平情緒、輕微抗菌',
-      precautions: '孕婦及低血壓患者請諮詢醫師後使用',
-      isActive: true,
-      images: [],
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
+  loadEssentialOil(id: string): void {
+    this.isLoading = true;
+    this.errorMessage = null;
+    this.essentialOil = null;
+    this.apiService.get<EssentialOil>(`essential-oils/${id}`).subscribe({
+      next: (data) => {
+        this.isLoading = false;
+        this.essentialOil = data;
+      },
+      error: (err) => {
+        this.isLoading = false;
+        this.errorMessage = ApiService.getErrorMessage(err, '載入精油失敗，請稍後再試');
+      }
+    });
+  }
+
+  retry(): void {
+    const id = this.route.snapshot.paramMap.get('id');
+    if (id) {
+      this.loadEssentialOil(id);
+    }
   }
 }

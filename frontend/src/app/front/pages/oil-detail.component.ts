@@ -37,15 +37,27 @@ import { Oil } from '../../shared/models/oil.model';
       </div>
     </div>
 
-    <div class="max-w-7xl mx-auto px-4 py-8" *ngIf="!oil">
+    <div class="max-w-7xl mx-auto px-4 py-8" *ngIf="!oil && isLoading">
       <div class="text-center py-12">
         <p class="text-gray-500">載入中...</p>
+      </div>
+    </div>
+
+    <div class="max-w-7xl mx-auto px-4 py-8" *ngIf="!oil && !isLoading && errorMessage">
+      <div class="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
+        <p class="text-red-700 mb-4">{{ errorMessage }}</p>
+        <div class="flex gap-4 justify-center">
+          <button (click)="retry()" class="btn-primary">重試</button>
+          <a routerLink="/oils" class="btn-secondary">返回列表</a>
+        </div>
       </div>
     </div>
   `
 })
 export class OilDetailComponent implements OnInit {
   oil: Oil | null = null;
+  isLoading = false;
+  errorMessage: string | null = null;
 
   constructor(
     private route: ActivatedRoute,
@@ -61,24 +73,30 @@ export class OilDetailComponent implements OnInit {
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id');
     if (id) {
-      this.apiService.get<Oil>(`oils/${id}`).subscribe({
-        next: (data) => this.oil = data,
-        error: () => this.oil = this.getMockOil()
-      });
+      this.loadOil(id);
     }
   }
 
-  private getMockOil(): Oil {
-    return {
-      id: 1,
-      name: '橄欖油',
-      origin: '被譽為「液體黃金」的橄欖油，富含維生素E、K和抗氧化物',
-      benefits: '深層滋潤、抗氧化、維持肌膚彈性、溫和親膚',
-      suitableFor: '乾性肌膚、一般肌膚皆適用',
-      isActive: true,
-      images: [],
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
+  loadOil(id: string): void {
+    this.isLoading = true;
+    this.errorMessage = null;
+    this.oil = null;
+    this.apiService.get<Oil>(`oils/${id}`).subscribe({
+      next: (data) => {
+        this.isLoading = false;
+        this.oil = data;
+      },
+      error: (err) => {
+        this.isLoading = false;
+        this.errorMessage = ApiService.getErrorMessage(err, '載入油品失敗，請稍後再試');
+      }
+    });
+  }
+
+  retry(): void {
+    const id = this.route.snapshot.paramMap.get('id');
+    if (id) {
+      this.loadOil(id);
+    }
   }
 }

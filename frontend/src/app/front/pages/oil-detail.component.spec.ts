@@ -38,13 +38,13 @@ describe('OilDetailComponent', () => {
     expect(component.oil?.id).toBe(3);
   });
 
-  it('請求失敗時應退回展示用假資料', () => {
+  it('請求失敗時應顯示錯誤並可重試，而非餵假資料', () => {
     api.get.and.returnValue(throwError(() => new Error('network')));
 
     component.ngOnInit();
 
-    expect(component.oil).toBeTruthy();
-    expect(component.oil?.name).toBe('橄欖油');
+    expect(component.oil).toBeNull();
+    expect(component.errorMessage).toBeTruthy();
   });
 
   it('請求尚未回應時應顯示載入中訊息', () => {

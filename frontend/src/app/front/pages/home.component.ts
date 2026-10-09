@@ -27,6 +27,10 @@ import { Soap } from '../../shared/models/soap.model';
       <section class="py-16 bg-white">
         <div class="max-w-7xl mx-auto px-4">
           <h2 class="section-title">精選商品</h2>
+          <div *ngIf="featuredError" class="bg-red-50 border border-red-200 rounded-xl p-6 text-center mb-6">
+            <p class="text-red-700 mb-4">{{ featuredError }}</p>
+            <button (click)="retryFeatured()" class="btn-primary">重試</button>
+          </div>
           <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             <div *ngFor="let soap of featuredSoaps" class="bg-amber-50 rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-shadow">
               <div class="h-48 bg-amber-200 flex items-center justify-center">
@@ -45,6 +49,9 @@ import { Soap } from '../../shared/models/soap.model';
       <section class="py-16 bg-amber-50">
         <div class="max-w-7xl mx-auto px-4">
           <h2 class="text-3xl font-bold text-center mb-8 text-amber-900">商品分類</h2>
+          <div *ngIf="categoryError" class="bg-red-50 border border-red-200 rounded-xl p-4 text-center mb-6">
+            <span class="text-red-700 text-sm">{{ categoryError }} </span><button (click)="retryCategories()" class="text-sm underline text-red-700">重試</button>
+          </div>
           <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <a *ngFor="let category of categories" [routerLink]="['/soaps']" [queryParams]="{ category: category.id }" class="bg-white rounded-xl p-6 text-center shadow-md hover:shadow-xl transition-shadow">
               <div class="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -65,6 +72,8 @@ export class HomeComponent implements OnInit {
   featuredSoaps: Soap[] = [];
 
   categories: Category[] = [];
+  featuredError: string | null = null;
+  categoryError: string | null = null;
 
   constructor(
     private apiService: ApiService,
@@ -82,6 +91,7 @@ export class HomeComponent implements OnInit {
   }
 
   private loadFeaturedSoaps(): void {
+    this.featuredError = null;
     const params = new HttpParams().set('page', 0).set('size', 6);
     this.apiService.getPage<Soap>('soaps/featured', params).subscribe({
       next: (pg) => {
@@ -92,8 +102,13 @@ export class HomeComponent implements OnInit {
           this.loadLatestSoaps();
         }
       },
+      // 精選端點失敗可能是暫時性，改試最新上架（仍是後端真資料）；若再失敗才顯示錯誤
       error: () => this.loadLatestSoaps()
     });
+  }
+
+  retryFeatured(): void {
+    this.loadFeaturedSoaps();
   }
 
   private loadLatestSoaps(): void {
@@ -103,22 +118,15 @@ export class HomeComponent implements OnInit {
       .set('sort', 'id,desc');
     this.apiService.getPage<Soap>('soaps', params).subscribe({
       next: (pg) => (this.featuredSoaps = pg.content),
-      error: () => {
-        // 後端無法連線時，退回展示用假資料，避免頁面空白（與 loadCategories 慣例一致）
-        this.featuredSoaps = this.getFallbackSoaps();
+      error: (err) => {
+        this.featuredSoaps = [];
+        this.featuredError = ApiService.getErrorMessage(err, '精選商品載入失敗，請稍後再試');
       }
     });
   }
 
-  private getFallbackSoaps(): Soap[] {
-    return [
-      { id: 1, name: '薰衣草舒緩皂', shortDescription: '添加薰衣草精油，幫助放鬆身心', fullDescription: '', price: 180, weight: '100g', dimensions: '', usageInstructions: '', storageInstructions: '', ingredients: '', features: '', isFeatured: true, isActive: true, category: { id: 1, name: '滋潤型' }, images: [], createdAt: new Date(), updatedAt: new Date() },
-      { id: 2, name: '茶樹淨膚皂', shortDescription: '深層清潔，適合油性肌膚', fullDescription: '', price: 150, weight: '100g', dimensions: '', usageInstructions: '', storageInstructions: '', ingredients: '', features: '', isFeatured: true, isActive: true, category: { id: 2, name: '清潔型' }, images: [], createdAt: new Date(), updatedAt: new Date() },
-      { id: 3, name: '玫瑰保濕皂', shortDescription: '溫和保濕，散發玫瑰香氣', fullDescription: '', price: 200, weight: '100g', dimensions: '', usageInstructions: '', storageInstructions: '', ingredients: '', features: '', isFeatured: true, isActive: true, category: { id: 1, name: '滋潤型' }, images: [], createdAt: new Date(), updatedAt: new Date() }
-    ];
-  }
-
   private loadCategories(): void {
+    this.categoryError = null;
     this.apiService.get<Category[]>('categories').subscribe({
       next: (data) => {
         // 只顯示後台已啟用的分類，並依後台設定的 sortOrder 排序
@@ -126,16 +134,14 @@ export class HomeComponent implements OnInit {
           .filter(c => c.isActive !== false)
           .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
       },
-      error: () => {
-        // 後端無法連線時，退回與資料庫 seed 一致的分類，避免頁面空白
-        this.categories = [
-          { id: 1, name: '一般家事皂', description: '', sortOrder: 1, isActive: true, createdAt: new Date(), updatedAt: new Date() },
-          { id: 2, name: '功能性家事皂', description: '', sortOrder: 2, isActive: true, createdAt: new Date(), updatedAt: new Date() },
-          { id: 3, name: '可愛造型手工皂', description: '', sortOrder: 3, isActive: true, createdAt: new Date(), updatedAt: new Date() },
-          { id: 4, name: '其他手工皂', description: '', sortOrder: 4, isActive: true, createdAt: new Date(), updatedAt: new Date() },
-          { id: 5, name: '其他', description: '', sortOrder: 5, isActive: true, createdAt: new Date(), updatedAt: new Date() }
-        ];
+      error: (err) => {
+        this.categories = [];
+        this.categoryError = ApiService.getErrorMessage(err, '分類載入失敗，請稍後再試');
       }
     });
+  }
+
+  retryCategories(): void {
+    this.loadCategories();
   }
 }

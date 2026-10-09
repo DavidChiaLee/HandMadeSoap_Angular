@@ -26,5 +26,13 @@ public interface SoapRepository extends JpaRepository<Soap, Long> {
             "LOWER(s.name) LIKE LOWER(CONCAT('%', :keyword, '%'))")
     Page<Soap> searchActiveSoapsByName(@Param("keyword") String keyword, Pageable pageable);
 
+    @Query("SELECT s FROM Soap s WHERE s.isActive = true AND s.category.id = :categoryId AND (" +
+            "LOWER(s.name) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+            "LOWER(s.shortDescription) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+            "LOWER(s.fullDescription) LIKE LOWER(CONCAT('%', :keyword, '%')))")
+    Page<Soap> searchActiveSoapsByCategory(@Param("categoryId") Long categoryId,
+                                          @Param("keyword") String keyword,
+                                          Pageable pageable);
+
     List<Soap> findByCategoryId(Long categoryId);
 }

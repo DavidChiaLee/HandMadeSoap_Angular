@@ -42,13 +42,13 @@ describe('EssentialOilDetailComponent', () => {
     expect(component.essentialOil?.id).toBe(7);
   });
 
-  it('請求失敗時應退回展示用假資料', () => {
+  it('請求失敗時應顯示錯誤並可重試，而非餵假資料', () => {
     api.get.and.returnValue(throwError(() => new Error('network')));
 
     component.ngOnInit();
 
-    expect(component.essentialOil).toBeTruthy();
-    expect(component.essentialOil?.name).toBe('薰衣草精油');
+    expect(component.essentialOil).toBeNull();
+    expect(component.errorMessage).toBeTruthy();
   });
 
   it('請求尚未回應時應顯示載入中訊息', () => {

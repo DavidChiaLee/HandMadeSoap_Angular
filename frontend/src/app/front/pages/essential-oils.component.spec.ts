@@ -48,13 +48,13 @@ describe('EssentialOilsComponent', () => {
       expect(component.totalPages).toBe(4);
     });
 
-    it('請求失敗時應退回內建展示資料', () => {
+    it('請求失敗時應顯示錯誤並可重試，而非餵假資料', () => {
       api.getPage.and.returnValue(throwError(() => new Error('network')));
 
       component.ngOnInit();
 
-      expect(component.essentialOils.length).toBeGreaterThan(0);
-      expect(component.essentialOils[0].name).toBe('薰衣草精油');
+      expect(component.essentialOils).toEqual([]);
+      expect(component.errorMessage).toBeTruthy();
     });
   });
 
