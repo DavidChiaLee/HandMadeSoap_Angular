@@ -5,6 +5,7 @@ import com.handsoap.dto.OilResponse;
 import com.handsoap.entity.Oil;
 import com.handsoap.entity.OilImage;
 import com.handsoap.exception.ResourceNotFoundException;
+import com.handsoap.repository.KeywordSanitizer;
 import com.handsoap.repository.OilRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -32,8 +33,18 @@ public class OilService {
         return oilRepository.findByIsActiveTrue(pageable).map(this::toResponse);
     }
 
+    /**
+     * 依名稱關鍵字搜尋；keyword 經 {@link KeywordSanitizer#normalize(String)} 正規化（review L3）。
+     *
+     * <p>normalize 回 {@code null}（沒有可搜尋內容）時回空結果，不把 null 丟進
+     * {@code CONCAT} —— 否則 MySQL 算出 {@code '%%'} 會變成「列出全部油品」。</p>
+     */
     public Page<OilResponse> searchOilsByName(String keyword, Pageable pageable) {
-        return oilRepository.searchActiveOilsByName(keyword.trim(), pageable).map(this::toResponse);
+        String normalized = KeywordSanitizer.normalize(keyword);
+        if (normalized == null) {
+            return Page.empty(pageable);
+        }
+        return oilRepository.searchActiveOilsByName(normalized, pageable).map(this::toResponse);
     }
 
     public OilResponse getOilById(Long id) {

@@ -6,6 +6,7 @@ import com.handsoap.entity.EssentialOil;
 import com.handsoap.entity.EssentialOilImage;
 import com.handsoap.exception.ResourceNotFoundException;
 import com.handsoap.repository.EssentialOilRepository;
+import com.handsoap.repository.KeywordSanitizer;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -31,8 +32,18 @@ public class EssentialOilService {
         return essentialOilRepository.findByIsActiveTrue(pageable).map(EssentialOilResponse::fromEntity);
     }
 
+    /**
+     * 依名稱關鍵字搜尋；keyword 經 {@link KeywordSanitizer#normalize(String)} 正規化（review L3）。
+     *
+     * <p>normalize 回 {@code null}（沒有可搜尋內容）時回空結果，不把 null 丟進
+     * {@code CONCAT} —— 否則 MySQL 算出 {@code '%%'} 會變成「列出全部精油」。</p>
+     */
     public Page<EssentialOilResponse> searchEssentialOils(String keyword, Pageable pageable) {
-        return essentialOilRepository.searchActiveEssentialOils(keyword.trim(), pageable)
+        String normalized = KeywordSanitizer.normalize(keyword);
+        if (normalized == null) {
+            return Page.empty(pageable);
+        }
+        return essentialOilRepository.searchActiveEssentialOils(normalized, pageable)
                 .map(EssentialOilResponse::fromEntity);
     }
 

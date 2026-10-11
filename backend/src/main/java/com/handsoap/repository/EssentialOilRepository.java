@@ -10,7 +10,8 @@ import org.springframework.data.repository.query.Param;
 public interface EssentialOilRepository extends JpaRepository<EssentialOil, Long> {
     Page<EssentialOil> findByIsActiveTrue(Pageable pageable);
 
+    /** 依名稱關鍵字搜尋；keyword 須經 {@link KeywordSanitizer#normalize(String)} 跳釋（review L3）。 */
     @Query("SELECT e FROM EssentialOil e WHERE e.isActive = true AND " +
-            "LOWER(e.name) LIKE LOWER(CONCAT('%', :keyword, '%'))")
+            "LOWER(e.name) LIKE LOWER(CONCAT('%', :keyword, '%')) ESCAPE '\\'")
     Page<EssentialOil> searchActiveEssentialOils(@Param("keyword") String keyword, Pageable pageable);
 }

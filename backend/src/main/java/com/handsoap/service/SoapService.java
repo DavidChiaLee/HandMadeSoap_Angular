@@ -10,6 +10,7 @@ import com.handsoap.entity.SoapImage;
 import com.handsoap.exception.BadRequestException;
 import com.handsoap.exception.ResourceNotFoundException;
 import com.handsoap.repository.CategoryRepository;
+import com.handsoap.repository.KeywordSanitizer;
 import com.handsoap.repository.EssentialOilRepository;
 import com.handsoap.repository.OilRepository;
 import com.handsoap.repository.SoapRepository;
@@ -60,29 +61,49 @@ public class SoapService {
         return soapRepository.findByCategoryIdAndIsActiveTrue(categoryId, pageable).map(this::toResponse);
     }
 
+    /**
+     * 關鍵字搜尋（多欄位）。
+     *
+     * <p>keyword 經 {@link KeywordSanitizer#normalize(String)} 去空白／截斷／跳釋萬用字元後
+     * 才進 JPQL（review L3）。normalize 回 {@code null} 代表「沒有可搜尋的內容」，
+     * 此時回<b>空結果</b>而非全部商品 —— 若把 null 傳進 {@code CONCAT}，MySQL 會算出
+     * {@code '%%'} 而匹配所有列，等於「搜尋空白字串」變成「列出全部商品」。</p>
+     */
     public Page<SoapResponse> searchSoaps(String keyword, Pageable pageable) {
-        return soapRepository.searchActiveSoaps(keyword, pageable).map(this::toResponse);
+        String normalized = KeywordSanitizer.normalize(keyword);
+        if (normalized == null) {
+            return Page.empty(pageable);
+        }
+        return soapRepository.searchActiveSoaps(normalized, pageable).map(this::toResponse);
     }
 
+    /** 依名稱關鍵字搜尋；同樣經 {@link KeywordSanitizer#normalize(String)} 正規化（review L3）。 */
     public Page<SoapResponse> searchSoapsByName(String keyword, Pageable pageable) {
-        return soapRepository.searchActiveSoapsByName(keyword.trim(), pageable).map(this::toResponse);
+        String normalized = KeywordSanitizer.normalize(keyword);
+        if (normalized == null) {
+            return Page.empty(pageable);
+        }
+        return soapRepository.searchActiveSoapsByName(normalized, pageable).map(this::toResponse);
     }
 
     /**
      * 前台統一查詢：GET /api/v1/soaps?categoryId=&keyword=&page=&size=&sort=
-     * 四種組合皆合法，空白 keyword 視為未傳，isActive=true 由各 repository 方法保證。
+     * 四種組合皆合法，isActive=true 由各 repository 方法保證。
+     *
+     * <p>「沒有 keyword」與「有分類」是兩件獨立的事：keyword 無內容時仍須依分類列出，
+     * 只有兩者皆無才回到全部商品（review L3 語意釘死）。</p>
      */
     public Page<SoapResponse> searchFiltered(Long categoryId, String keyword, Pageable pageable) {
-        boolean hasKeyword = keyword != null && !keyword.isBlank();
-        String trimmed = hasKeyword ? keyword.trim() : null;
+        String normalized = KeywordSanitizer.normalize(keyword);
+        boolean hasKeyword = normalized != null;
         if (categoryId != null && hasKeyword) {
-            return soapRepository.searchActiveSoapsByCategory(categoryId, trimmed, pageable).map(this::toResponse);
+            return soapRepository.searchActiveSoapsByCategory(categoryId, normalized, pageable).map(this::toResponse);
         }
         if (categoryId != null) {
             return getSoapsByCategory(categoryId, pageable);
         }
         if (hasKeyword) {
-            return soapRepository.searchActiveSoaps(trimmed, pageable).map(this::toResponse);
+            return soapRepository.searchActiveSoaps(normalized, pageable).map(this::toResponse);
         }
         return getAllSoaps(pageable);
     }

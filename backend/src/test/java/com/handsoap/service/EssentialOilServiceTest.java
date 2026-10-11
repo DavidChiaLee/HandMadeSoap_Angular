@@ -69,6 +69,29 @@ class EssentialOilServiceTest {
     }
 
     @Test
+    @DisplayName("keyword 的 % 與 _ 應被跳釋後才進 JPQL（review L3）")
+    void shouldEscapeLikeMetacharactersBeforeQuery() {
+        Pageable pageable = PageRequest.of(0, 5);
+        given(essentialOilRepository.searchActiveEssentialOils("100\\%", pageable))
+                .willReturn(new PageImpl<>(List.of()));
+
+        service.searchEssentialOils("100%", pageable);
+
+        then(essentialOilRepository).should().searchActiveEssentialOils("100\\%", pageable);
+    }
+
+    @Test
+    @DisplayName("空白 keyword 應回空頁且完全不查 DB（review L3）")
+    void shouldReturnEmptyPageWithoutQueryingForBlankKeyword() {
+        Pageable pageable = PageRequest.of(0, 5);
+
+        assertThat(service.searchEssentialOils("　", pageable).getContent()).isEmpty();
+
+        // 全形空格 U+3000 也要被視為空白（strip() 而非 trim() 的理由）
+        then(essentialOilRepository).shouldHaveNoInteractions();
+    }
+
+    @Test
     @DisplayName("取得全部資料時應使用 findByIsActiveTrue")
     void shouldReturnAllActiveOils() {
         Pageable pageable = PageRequest.of(0, 5);

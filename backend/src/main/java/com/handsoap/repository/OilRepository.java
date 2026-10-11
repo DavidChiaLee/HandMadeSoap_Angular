@@ -10,7 +10,8 @@ import org.springframework.data.repository.query.Param;
 public interface OilRepository extends JpaRepository<Oil, Long> {
     Page<Oil> findByIsActiveTrue(Pageable pageable);
 
+    /** 依名稱關鍵字搜尋；keyword 須經 {@link KeywordSanitizer#normalize(String)} 跳釋（review L3）。 */
     @Query("SELECT o FROM Oil o WHERE o.isActive = true AND " +
-            "LOWER(o.name) LIKE LOWER(CONCAT('%', :keyword, '%'))")
+            "LOWER(o.name) LIKE LOWER(CONCAT('%', :keyword, '%')) ESCAPE '\\'")
     Page<Oil> searchActiveOilsByName(@Param("keyword") String keyword, Pageable pageable);
 }

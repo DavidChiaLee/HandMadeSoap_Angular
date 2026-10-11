@@ -134,6 +134,44 @@ class SoapServiceTest {
     }
 
     @Test
+    @DisplayName("keyword 的 % 與 _ 應被跳釋後才進 JPQL（review L3）")
+    void shouldEscapeLikeMetacharactersBeforeQuery() {
+        Pageable pageable = PageRequest.of(0, 5);
+        given(soapRepository.searchActiveSoaps("100\\%", pageable))
+                .willReturn(pageOf(soap(2L, "100% 純皂")));
+
+        service.searchSoaps("100%", pageable);
+
+        // 未跳釋時 % 是萬用字元，會把「找 100%」變成「找任何東西」
+        then(soapRepository).should().searchActiveSoaps("100\\%", pageable);
+    }
+
+    @Test
+    @DisplayName("空白 keyword 應回空頁且完全不查 DB（review L3）")
+    void shouldReturnEmptyPageWithoutQueryingForBlankKeyword() {
+        Pageable pageable = PageRequest.of(0, 5);
+
+        assertThat(service.searchSoaps("   ", pageable).getContent()).isEmpty();
+
+        // 關鍵斷言：不可把 null/空白丟進 CONCAT —— MySQL 算出 '%%' 會回全部商品。
+        // 這也是修正前的實際行為：searchSoaps("  ") 曾經回傳全部商品。
+        then(soapRepository).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("有分類但 keyword 為空白時仍應依分類列出，不可回全部商品（review L3）")
+    void shouldFilterByCategoryWhenKeywordIsBlank() {
+        Pageable pageable = PageRequest.of(0, 5);
+        given(soapRepository.findByCategoryIdAndIsActiveTrue(7L, pageable))
+                .willReturn(pageOf(soap(2L, "分類皂")));
+
+        var result = service.searchFiltered(7L, "  ", pageable);
+
+        then(soapRepository).should().findByCategoryIdAndIsActiveTrue(7L, pageable);
+        assertThat(result.getContent()).hasSize(1);
+    }
+
+    @Test
     @DisplayName("取得全部資料時應使用 findByIsActiveTrue")
     void shouldReturnAllActiveSoaps() {
         Pageable pageable = PageRequest.of(0, 5);

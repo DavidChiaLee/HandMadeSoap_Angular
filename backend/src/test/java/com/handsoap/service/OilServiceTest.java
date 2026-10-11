@@ -64,6 +64,30 @@ class OilServiceTest {
     }
 
     @Test
+    @DisplayName("keyword 的 % 與 _ 應被跳釋後才進 JPQL（review L3）")
+    void shouldEscapeLikeMetacharactersBeforeQuery() {
+        Pageable pageable = PageRequest.of(0, 5);
+        given(oilRepository.searchActiveOilsByName("100\\%", pageable))
+                .willReturn(new PageImpl<>(List.of()));
+
+        service.searchOilsByName("100%", pageable);
+
+        // 未跳釋時 % 是萬用字元，「100%」會匹配幾乎所有油品
+        then(oilRepository).should().searchActiveOilsByName("100\\%", pageable);
+    }
+
+    @Test
+    @DisplayName("空白 keyword 應回空頁且完全不查 DB（review L3）")
+    void shouldReturnEmptyPageWithoutQueryingForBlankKeyword() {
+        Pageable pageable = PageRequest.of(0, 5);
+
+        assertThat(service.searchOilsByName("   ", pageable).getContent()).isEmpty();
+
+        // 關鍵斷言：不可把 null/空白丟進 CONCAT —— MySQL 會算出 '%%' 而回全部油品
+        then(oilRepository).shouldHaveNoInteractions();
+    }
+
+    @Test
     @DisplayName("取得全部資料時應使用 findByIsActiveTrue")
     void shouldReturnAllActiveOils() {
         Pageable pageable = PageRequest.of(0, 5);
