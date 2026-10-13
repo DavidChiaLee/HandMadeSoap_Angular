@@ -6,6 +6,7 @@ import { HttpParams } from '@angular/common/http';
 import { ApiService } from '../../shared/services/api.service';
 import { FileUrlService, ImageRef } from '../../shared/services/file-url.service';
 import { Soap } from '../../shared/models/soap.model';
+import { Category } from '../../shared/models/category.model';
 
 @Component({
   selector: 'app-soaps',
@@ -79,7 +80,7 @@ import { Soap } from '../../shared/models/soap.model';
 })
 export class SoapsComponent implements OnInit {
   soaps: Soap[] = [];
-  categories: any[] = [];
+  categories: Category[] = [];
   selectedCategory: number | null = null;
   sortBy = 'name';
   page = 0;
@@ -151,7 +152,7 @@ export class SoapsComponent implements OnInit {
 
   loadCategories(): void {
     this.categoryError = null;
-    this.apiService.get<any[]>('categories').subscribe({
+    this.apiService.getList<Category>('categories').subscribe({
       next: (data) => this.categories = data,
       error: (err) => {
         this.categories = [];

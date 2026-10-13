@@ -38,17 +38,17 @@ describe('SoapsComponent', () => {
 
   describe('初次載入', () => {
     it('應同時載入分類與手工皂列表', () => {
-      api.get.and.returnValue(of([makeCategory()]));
+      api.getList.and.returnValue(of([makeCategory()]));
       api.getPage.and.returnValue(of(makePage(makeSoaps())));
 
       component.ngOnInit();
 
-      expect(api.get).toHaveBeenCalledWith('categories');
+      expect(api.getList).toHaveBeenCalledWith('categories');
       expect(api.getPage).toHaveBeenCalled();
     });
 
     it('分類載入失敗時應顯示錯誤並可重試，而非餵假分類', () => {
-      api.get.and.returnValue(throwError(() => new Error('network')));
+      api.getList.and.returnValue(throwError(() => new Error('network')));
       api.getPage.and.returnValue(of(makePage([])));
 
       component.ngOnInit();
@@ -58,7 +58,7 @@ describe('SoapsComponent', () => {
     });
 
     it('應以 page/size/sort 參數載入手工皂', () => {
-      api.get.and.returnValue(of([]));
+      api.getList.and.returnValue(of([]));
       api.getPage.and.returnValue(of(makePage([])));
 
       component.ngOnInit();
@@ -71,7 +71,7 @@ describe('SoapsComponent', () => {
 
   describe('分類篩選', () => {
     beforeEach(() => {
-      api.get.and.returnValue(of([makeCategory()]));
+      api.getList.and.returnValue(of([makeCategory()]));
       api.getPage.and.returnValue(of(makePage(makeSoaps(), { totalPages: 1, number: 0 })));
       component.ngOnInit();
       api.getPage.calls.reset();
@@ -103,7 +103,7 @@ describe('SoapsComponent', () => {
 
   describe('排序', () => {
     beforeEach(() => {
-      api.get.and.returnValue(of([]));
+      api.getList.and.returnValue(of([]));
       api.getPage.and.returnValue(of(makePage(makeSoaps(), { totalPages: 1, number: 0 })));
       component.ngOnInit();
       api.getPage.calls.reset();
@@ -144,7 +144,7 @@ describe('SoapsComponent', () => {
 
   describe('分頁', () => {
     beforeEach(() => {
-      api.get.and.returnValue(of([]));
+      api.getList.and.returnValue(of([]));
       api.getPage.and.returnValue(of(makePage(makeSoaps(), { totalPages: 4, number: 0 })));
       component.ngOnInit();
       api.getPage.calls.reset();
@@ -206,7 +206,7 @@ describe('SoapsComponent', () => {
 
   describe('載入失敗', () => {
     it('列表請求失敗時應顯示錯誤並可重試，而非餵假資料', () => {
-      api.get.and.returnValue(of([]));
+      api.getList.and.returnValue(of([]));
       api.getPage.and.returnValue(throwError(() => new Error('network')));
 
       component.ngOnInit();
@@ -217,7 +217,7 @@ describe('SoapsComponent', () => {
     });
 
     it('重試應以目前頁碼重新請求', () => {
-      api.get.and.returnValue(of([]));
+      api.getList.and.returnValue(of([]));
       api.getPage.and.returnValue(throwError(() => new Error('network')));
       component.ngOnInit();
       api.getPage.calls.reset();
@@ -229,7 +229,7 @@ describe('SoapsComponent', () => {
     });
 
     it('選擇分類後應以 categoryId 查詢參數打統一 soaps 端點', () => {
-      api.get.and.returnValue(of([]));
+      api.getList.and.returnValue(of([]));
       api.getPage.and.returnValue(of(makePage([])));
       component.ngOnInit();
       api.getPage.calls.reset();
@@ -244,7 +244,7 @@ describe('SoapsComponent', () => {
   });
 
   it('應渲染手工皂卡片', () => {
-    api.get.and.returnValue(of([makeCategory()]));
+    api.getList.and.returnValue(of([makeCategory()]));
     api.getPage.and.returnValue(of(makePage([makeSoap({ name: '燕麥溫和皂' })])));
 
     component.ngOnInit();

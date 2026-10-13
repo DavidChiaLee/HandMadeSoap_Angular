@@ -133,11 +133,12 @@ export function stubRoute(id: string | null = '1'): ActivatedRoute {
  */
 export function mockApiService(): jasmine.SpyObj<ApiService> {
   const api = jasmine.createSpyObj<ApiService>('ApiService', [
-    'get', 'getPage', 'post', 'put', 'delete', 'upload'
+    'get', 'getList', 'getPage', 'post', 'put', 'delete', 'upload'
   ]);
   // 預設讓所有方法回傳空結果，避免測試只驗證「是否被呼叫」時
   // 因拿到 undefined 而在 .subscribe() 拋錯中斷整個測試執行。
   api.get.and.returnValue(of([]));
+  api.getList.and.returnValue(of([]));
   api.getPage.and.returnValue(of(makePage([])));
   api.post.and.returnValue(of({}));
   api.put.and.returnValue(of({}));

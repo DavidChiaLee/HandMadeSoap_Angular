@@ -45,7 +45,7 @@ import { MAX_UPLOAD_SIZE, UPLOAD_SIZE_ERROR_MSG } from '../../shared/constants';
             <tr *ngFor="let oil of oils">
               <td class="px-6 py-4">
                 <div class="w-16 h-16 bg-amber-100 rounded-lg overflow-hidden flex items-center justify-center">
-                  <img [src]="fileUrl(oil.images)" class="w-full h-full object-cover" loading="lazy">
+                  <img [src]="fileUrl(oil.images)" class="w-full h-full object-cover" loading="lazy" width="64" height="64">
                 </div>
               </td>
               <td class="px-6 py-4 text-sm text-gray-900">{{ oil.name }}</td>
@@ -108,7 +108,7 @@ import { MAX_UPLOAD_SIZE, UPLOAD_SIZE_ERROR_MSG } from '../../shared/constants';
                 <div class="flex flex-wrap gap-2">
                   <div *ngFor="let img of currentOil.images" class="relative w-20 h-20">
                     <img [src]="imageSrc(img.imagePath)" class="w-full h-full object-cover rounded-lg" loading="lazy"
-                      [attr.alt]="'圖片 ' + img.id">
+                      width="80" height="80" [attr.alt]="'圖片 ' + img.id">
                     <button type="button" (click)="deleteImage(img.id)" aria-label="移除這張圖片"
                       class="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-600 text-white text-xs leading-none shadow hover:bg-red-700">×</button>
                   </div>
@@ -117,7 +117,7 @@ import { MAX_UPLOAD_SIZE, UPLOAD_SIZE_ERROR_MSG } from '../../shared/constants';
               <input type="file" (change)="onFileSelected($event)" accept="image/*" class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-amber-50 file:text-amber-700 hover:file:bg-amber-100">
               <p *ngIf="fileError" class="mt-2 text-sm text-red-600">{{ fileError }}</p>
               <div *ngIf="selectedImagePreview" class="mt-2">
-                <img [src]="selectedImagePreview" class="w-20 h-20 object-cover rounded-lg">
+                <img [src]="selectedImagePreview" class="w-20 h-20 object-cover rounded-lg" loading="lazy" width="80" height="80">
               </div>
             </div>
             <p *ngIf="saveError" class="text-sm text-red-600">{{ saveError }}</p>

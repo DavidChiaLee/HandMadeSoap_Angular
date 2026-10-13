@@ -23,16 +23,16 @@ describe('CategoriesComponent', () => {
 
   describe('載入列表', () => {
     it('ngOnInit 應向 admin/categories 載入資料', () => {
-      api.get.and.returnValue(of([makeCategory()]));
+      api.getList.and.returnValue(of([makeCategory()]));
 
       component.ngOnInit();
 
-      expect(api.get).toHaveBeenCalledWith('admin/categories');
+      expect(api.getList).toHaveBeenCalledWith('admin/categories');
       expect(component.categories.length).toBe(1);
     });
 
     it('載入成功後不應顯示錯誤訊息', () => {
-      api.get.and.returnValue(of([makeCategory()]));
+      api.getList.and.returnValue(of([makeCategory()]));
 
       component.ngOnInit();
 
@@ -41,7 +41,7 @@ describe('CategoriesComponent', () => {
 
     it('載入失敗時應設定 loadError 並清空列表', () => {
       spyOn(console, 'error');
-      api.get.and.returnValue(throwError(() => new Error('network')));
+      api.getList.and.returnValue(throwError(() => new Error('network')));
       component.categories = [makeCategory()];
 
       component.ngOnInit();
@@ -52,7 +52,7 @@ describe('CategoriesComponent', () => {
 
     it('loadError 為 true 時畫面應顯示失敗提示', () => {
       spyOn(console, 'error');
-      api.get.and.returnValue(throwError(() => new Error('network')));
+      api.getList.and.returnValue(throwError(() => new Error('network')));
 
       component.ngOnInit();
       fixture.detectChanges();
@@ -103,7 +103,7 @@ describe('CategoriesComponent', () => {
 
   describe('儲存', () => {
     beforeEach(() => {
-      api.get.and.returnValue(of([]));
+      api.getList.and.returnValue(of([]));
       spyOn(window, 'alert');
     });
 
@@ -115,7 +115,7 @@ describe('CategoriesComponent', () => {
       component.saveCategory();
 
       expect(api.post).toHaveBeenCalledWith('admin/categories', { name: '新品分類' });
-      expect(api.get).toHaveBeenCalledWith('admin/categories');
+      expect(api.getList).toHaveBeenCalledWith('admin/categories');
       expect(component.showModal).toBeFalse();
     });
 
@@ -155,7 +155,7 @@ describe('CategoriesComponent', () => {
 
   describe('刪除', () => {
     beforeEach(() => {
-      api.get.and.returnValue(of([]));
+      api.getList.and.returnValue(of([]));
       api.delete.and.returnValue(of(null));
     });
 
@@ -165,7 +165,7 @@ describe('CategoriesComponent', () => {
       component.deleteCategory(3);
 
       expect(api.delete).toHaveBeenCalledWith('admin/categories/3');
-      expect(api.get).toHaveBeenCalledWith('admin/categories');
+      expect(api.getList).toHaveBeenCalledWith('admin/categories');
     });
 
     it('取消確認時不應送出刪除', () => {
@@ -188,7 +188,7 @@ describe('CategoriesComponent', () => {
   });
 
   it('應以列表呈現分類', () => {
-    api.get.and.returnValue(of([makeCategory({ name: '清潔型' })]));
+    api.getList.and.returnValue(of([makeCategory({ name: '清潔型' })]));
 
     component.ngOnInit();
     fixture.detectChanges();

@@ -14,7 +14,7 @@ import { Oil } from '../../shared/models/oil.model';
       <div class="bg-white rounded-xl shadow-md overflow-hidden">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-8 p-6">
           <div class="bg-amber-100 rounded-xl overflow-hidden">
-            <img [src]="fileUrl(oil.images)" [alt]="oil.name" class="w-full h-full object-cover aspect-square">
+            <img [src]="fileUrl(oil.images)" [alt]="oil.name" class="w-full h-full object-cover aspect-square" width="600" height="600">
           </div>
 
           <div>

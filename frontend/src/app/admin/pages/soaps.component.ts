@@ -7,6 +7,7 @@ import { FileUrlService, ImageRef } from '../../shared/services/file-url.service
 import { Soap } from '../../shared/models/soap.model';
 import { Oil } from '../../shared/models/oil.model';
 import { EssentialOil } from '../../shared/models/essential-oil.model';
+import { Category } from '../../shared/models/category.model';
 import { MAX_UPLOAD_SIZE, UPLOAD_SIZE_ERROR_MSG } from '../../shared/constants';
 
 @Component({
@@ -50,7 +51,7 @@ import { MAX_UPLOAD_SIZE, UPLOAD_SIZE_ERROR_MSG } from '../../shared/constants';
             <tr *ngFor="let soap of soaps">
               <td class="px-6 py-4">
                 <div class="w-16 h-16 bg-amber-100 rounded-lg overflow-hidden">
-                  <img [src]="fileUrl(soap.images)" class="w-full h-full object-cover" loading="lazy">
+                  <img [src]="fileUrl(soap.images)" class="w-full h-full object-cover" loading="lazy" width="64" height="64">
                 </div>
               </td>
               <td class="px-6 py-4 text-sm text-gray-900">{{ soap.name }}</td>
@@ -176,7 +177,7 @@ import { MAX_UPLOAD_SIZE, UPLOAD_SIZE_ERROR_MSG } from '../../shared/constants';
                 <div class="flex flex-wrap gap-2">
                   <div *ngFor="let img of currentSoap.images" class="relative w-20 h-20">
                     <img [src]="imageSrc(img.imagePath)" class="w-full h-full object-cover rounded-lg" loading="lazy"
-                      [attr.alt]="'圖片 ' + img.id">
+                      width="80" height="80" [attr.alt]="'圖片 ' + img.id">
                     <button type="button" (click)="deleteImage(img.id)" aria-label="移除這張圖片"
                       class="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-600 text-white text-xs leading-none shadow hover:bg-red-700">×</button>
                   </div>
@@ -185,7 +186,7 @@ import { MAX_UPLOAD_SIZE, UPLOAD_SIZE_ERROR_MSG } from '../../shared/constants';
               <input type="file" (change)="onFileSelected($event)" accept="image/*" class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-amber-50 file:text-amber-700 hover:file:bg-amber-100">
               <p *ngIf="fileError" class="mt-2 text-sm text-red-600">{{ fileError }}</p>
               <div *ngIf="selectedImagePreview" class="mt-2">
-                <img [src]="selectedImagePreview" class="w-20 h-20 object-cover rounded-lg">
+                <img [src]="selectedImagePreview" class="w-20 h-20 object-cover rounded-lg" loading="lazy" width="80" height="80">
               </div>
             </div>
             <div class="flex items-center">
@@ -210,7 +211,7 @@ import { MAX_UPLOAD_SIZE, UPLOAD_SIZE_ERROR_MSG } from '../../shared/constants';
 })
 export class SoapsComponent implements OnInit, OnDestroy {
   soaps: Soap[] = [];
-  categories: any[] = [];
+  categories: Category[] = [];
   allOils: Oil[] = [];
   allEssentialOils: EssentialOil[] = [];
   showModal = false;
@@ -401,7 +402,7 @@ export class SoapsComponent implements OnInit, OnDestroy {
   }
 
   loadCategories(): void {
-    this.apiService.get<any[]>('categories').subscribe({
+    this.apiService.getList<Category>('categories').subscribe({
       next: (data) => this.categories = data,
       error: (err) => {
         console.error('載入分類失敗', err);
@@ -415,7 +416,7 @@ export class SoapsComponent implements OnInit, OnDestroy {
       .set('page', '0')
       .set('size', '1000')
       .set('sort', 'name,asc');
-    this.apiService.get<Oil[]>('admin/oils', params).subscribe({
+    this.apiService.getList<Oil>('admin/oils', params).subscribe({
       next: (data) => this.allOils = data ?? [],
       error: (err) => {
         console.error('載入油品失敗', err);
@@ -429,7 +430,7 @@ export class SoapsComponent implements OnInit, OnDestroy {
       .set('page', '0')
       .set('size', '1000')
       .set('sort', 'name,asc');
-    this.apiService.get<EssentialOil[]>('admin/essential-oils', params).subscribe({
+    this.apiService.getList<EssentialOil>('admin/essential-oils', params).subscribe({
       next: (data) => this.allEssentialOils = data ?? [],
       error: (err) => {
         console.error('載入精油失敗', err);

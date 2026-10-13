@@ -21,10 +21,6 @@ module.exports = function (config) {
     jasmineHtmlReporter: {
       suppressAll: true
     },
-    // 失敗時輸出穩定、易讀的報告（不帶 Windows 終端編碼雜訊）
-    mochaReporter: {
-      output: 'mocha-report.txt'
-    },
     coverageReporter: {
       dir: require('path').join(__dirname, './coverage/frontend'),
       subdir: '.',

@@ -80,7 +80,7 @@ export class CategoriesComponent implements OnInit {
 
   loadCategories(): void {
     this.loadError = false;
-    this.apiService.get<Category[]>('admin/categories').subscribe({
+    this.apiService.getList<Category>('admin/categories').subscribe({
       next: (data) => this.categories = data,
       error: (err) => {
         console.error('載入分類失敗', err);

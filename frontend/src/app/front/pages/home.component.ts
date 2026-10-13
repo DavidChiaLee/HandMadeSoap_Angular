@@ -127,7 +127,7 @@ export class HomeComponent implements OnInit {
 
   private loadCategories(): void {
     this.categoryError = null;
-    this.apiService.get<Category[]>('categories').subscribe({
+    this.apiService.getList<Category>('categories').subscribe({
       next: (data) => {
         // 只顯示後台已啟用的分類，並依後台設定的 sortOrder 排序
         this.categories = data

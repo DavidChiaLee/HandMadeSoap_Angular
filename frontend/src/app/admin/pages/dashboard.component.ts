@@ -3,6 +3,14 @@ import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { ApiService } from '../../shared/services/api.service';
 
+/** 後端 /admin/stats 回傳的統計欄位（對應 StatsResponse.java）。 */
+interface Stats {
+  soaps: number;
+  oils: number;
+  essentialOils: number;
+  contacts: number;
+}
+
 @Component({
   selector: 'app-dashboard',
   standalone: true,
@@ -76,7 +84,7 @@ import { ApiService } from '../../shared/services/api.service';
   `
 })
 export class DashboardComponent implements OnInit {
-  stats = {
+  stats: Stats = {
     soaps: 0,
     oils: 0,
     essentialOils: 0,
@@ -90,7 +98,7 @@ export class DashboardComponent implements OnInit {
   }
 
   loadStats(): void {
-    this.apiService.get<any>('admin/stats').subscribe({
+    this.apiService.get<Stats>('admin/stats').subscribe({
       next: (data) => {
         this.stats = data;
       },

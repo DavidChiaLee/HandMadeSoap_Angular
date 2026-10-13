@@ -33,7 +33,7 @@ describe('HomeComponent', () => {
     it('精選商品有資料時應直接採用，不另外請求最新商品', () => {
       const featured = [makeSoap({ id: 1 }), makeSoap({ id: 2 })];
       api.getPage.and.returnValue(of(makePage(featured)));
-      api.get.and.returnValue(of([]));
+      api.getList.and.returnValue(of([]));
 
       component.ngOnInit();
 
@@ -45,7 +45,7 @@ describe('HomeComponent', () => {
     it('精選商品為空時應改載入最新上架商品', () => {
       const latest = [makeSoap({ id: 9 })];
       api.getPage.and.returnValue(of(makePage([])));
-      api.get.and.returnValue(of([]));
+      api.getList.and.returnValue(of([]));
 
       component.ngOnInit();
       // 第二個 getPage 為最新商品請求
@@ -58,7 +58,7 @@ describe('HomeComponent', () => {
 
     it('精選商品請求失敗時應改載入最新上架商品', () => {
       api.getPage.and.returnValue(throwError(() => new Error('network')));
-      api.get.and.returnValue(of([]));
+      api.getList.and.returnValue(of([]));
 
       component.ngOnInit();
 
@@ -67,7 +67,7 @@ describe('HomeComponent', () => {
 
     it('精選與最新商品都失敗時應顯示錯誤並可重試，而非餵假資料', () => {
       api.getPage.and.returnValue(throwError(() => new Error('network')));
-      api.get.and.returnValue(of([]));
+      api.getList.and.returnValue(of([]));
 
       component.ngOnInit();
 
@@ -77,7 +77,7 @@ describe('HomeComponent', () => {
 
     it('精選與最新商品都失敗時應顯示錯誤並可重試，而非餵假資料', () => {
       api.getPage.and.returnValue(throwError(() => new Error('network')));
-      api.get.and.returnValue(of([]));
+      api.getList.and.returnValue(of([]));
 
       component.ngOnInit();
 
@@ -87,7 +87,7 @@ describe('HomeComponent', () => {
 
     it('請求精選商品時應帶入 page=0 與 size=6', () => {
       api.getPage.and.returnValue(of(makePage([])));
-      api.get.and.returnValue(of([]));
+      api.getList.and.returnValue(of([]));
 
       component.ngOnInit();
 
@@ -100,7 +100,7 @@ describe('HomeComponent', () => {
   describe('分類載入', () => {
     it('應過濾掉已停用的分類', () => {
       api.getPage.and.returnValue(of(makePage([])));
-      api.get.and.returnValue(of([
+      api.getList.and.returnValue(of([
         makeCategory({ id: 1, name: '一般家事皂', isActive: true }),
         makeCategory({ id: 2, name: '已下架', isActive: false })
       ]));
@@ -113,7 +113,7 @@ describe('HomeComponent', () => {
 
     it('應依 sortOrder 由小到大排序', () => {
       api.getPage.and.returnValue(of(makePage([])));
-      api.get.and.returnValue(of([
+      api.getList.and.returnValue(of([
         makeCategory({ id: 1, name: 'C', sortOrder: 3 }),
         makeCategory({ id: 2, name: 'A', sortOrder: 1 }),
         makeCategory({ id: 3, name: 'B', sortOrder: 2 })
@@ -126,7 +126,7 @@ describe('HomeComponent', () => {
 
     it('sortOrder 為 null 或 undefined 時應視為 0 排在最前', () => {
       api.getPage.and.returnValue(of(makePage([])));
-      api.get.and.returnValue(of([
+      api.getList.and.returnValue(of([
         makeCategory({ id: 1, name: '有排序', sortOrder: 5 }),
         { ...makeCategory({ id: 2, name: '無排序' }), sortOrder: undefined as any }
       ]));
@@ -138,7 +138,7 @@ describe('HomeComponent', () => {
 
     it('分類請求失敗時應顯示錯誤並可重試，而非餵假分類', () => {
       api.getPage.and.returnValue(of(makePage([])));
-      api.get.and.returnValue(throwError(() => new Error('network')));
+      api.getList.and.returnValue(throwError(() => new Error('network')));
 
       component.ngOnInit();
 
@@ -148,17 +148,17 @@ describe('HomeComponent', () => {
 
     it('應向 categories 端點請求分類', () => {
       api.getPage.and.returnValue(of(makePage([])));
-      api.get.and.returnValue(of([]));
+      api.getList.and.returnValue(of([]));
 
       component.ngOnInit();
 
-      expect(api.get).toHaveBeenCalledWith('categories');
+      expect(api.getList).toHaveBeenCalledWith('categories');
     });
   });
 
   it('應渲染精選商品區塊', () => {
     api.getPage.and.returnValue(of(makePage([makeSoap({ id: 1, name: '玫瑰保濕皂' })])));
-    api.get.and.returnValue(of([]));
+    api.getList.and.returnValue(of([]));
 
     component.ngOnInit();
     fixture.detectChanges();

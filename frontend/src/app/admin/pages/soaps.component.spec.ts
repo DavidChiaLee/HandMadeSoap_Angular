@@ -38,7 +38,7 @@ describe('SoapsComponent (admin)', () => {
 
   beforeEach(async () => {
     api = mockApiService();
-    api.get.and.returnValue(of([makeCategory()]));
+    api.getList.and.returnValue(of([makeCategory()]));
     api.getPage.and.returnValue(of(makePage([makeSoap()], { totalPages: 2, number: 0 })));
 
     await TestBed.configureTestingModule({
@@ -61,22 +61,22 @@ describe('SoapsComponent (admin)', () => {
     it('ngOnInit 應載入分類、油品、精油與手工皂列表', () => {
       component.ngOnInit();
 
-      // 列表本身走 getPage（分頁），油品／精油選單走 get（一次抓全部）
-      expect(api.get).toHaveBeenCalledWith('categories');
+      // 列表本身走 getPage（分頁），分類／油品／精油選單走 getList（一次抓全部）
+      expect(api.getList).toHaveBeenCalledWith('categories');
       expect(api.getPage.calls.allArgs().map(args => args[0])).toContain('admin/soaps');
     });
 
     it('油品與精油選單應一次載入大量資料供下拉多選', () => {
       component.ngOnInit();
 
-      // 選單用 get（回傳陣列）一次抓全部，而非分頁的 getPage
-      const endpoints = api.get.calls.allArgs().map(args => args[0]);
+      // 選單用 getList（回傳陣列）一次抓全部，而非分頁的 getPage
+      const endpoints = api.getList.calls.allArgs().map(args => args[0]);
       expect(endpoints).toContain('admin/oils');
       expect(endpoints).toContain('admin/essential-oils');
     });
 
     it('油品載入失敗時應設為空陣列', () => {
-      api.get.and.returnValue(throwError(() => new Error('network')));
+      api.getList.and.returnValue(throwError(() => new Error('network')));
 
       component.ngOnInit();
 
@@ -86,7 +86,7 @@ describe('SoapsComponent (admin)', () => {
 
     it('列表載入失敗時應清空列表與分頁狀態', () => {
       spyOn(console, 'error');
-      api.get.and.returnValue(of([]));
+      api.getList.and.returnValue(of([]));
       api.getPage.and.returnValue(throwError(() => new Error('network')));
       component.soaps = [makeSoap()];
       component.totalElements = 50;
@@ -284,7 +284,7 @@ describe('SoapsComponent (admin)', () => {
   });
   describe('儲存', () => {
     beforeEach(() => {
-      api.get.and.returnValue(of([makeCategory()]));
+      api.getList.and.returnValue(of([makeCategory()]));
     });
 
     it('新增模式應以 POST 送出並帶上分類與油品精油 id', () => {
@@ -351,7 +351,7 @@ describe('SoapsComponent (admin)', () => {
     });
 
     it('新增成功且有選檔時應以新 id 上傳圖片', () => {
-      api.get.and.returnValue(of([]));
+      api.getList.and.returnValue(of([]));
       api.post.and.returnValue(of(makeSoap({ id: 11 })));
       component.selectedFile = fakeFile();
       component.isEdit = false;
@@ -365,7 +365,7 @@ describe('SoapsComponent (admin)', () => {
     });
 
     it('未選檔時不應呼叫上傳', () => {
-      api.get.and.returnValue(of([]));
+      api.getList.and.returnValue(of([]));
       api.post.and.returnValue(of(makeSoap({ id: 11 })));
       component.selectedFile = null;
       component.isEdit = false;
@@ -378,7 +378,7 @@ describe('SoapsComponent (admin)', () => {
 
   describe('刪除', () => {
     beforeEach(() => {
-      api.get.and.returnValue(of([]));
+      api.getList.and.returnValue(of([]));
       api.delete.and.returnValue(of(null));
       component.ngOnInit();
       api.getPage.calls.reset();

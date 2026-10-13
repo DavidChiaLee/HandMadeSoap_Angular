@@ -2,7 +2,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { provideHttpClient } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import { HttpParams } from '@angular/common/http';
-import { ApiService } from './api.service';
+import { ApiService, isPage } from './api.service';
 import { makePage, makeSoap } from '../../testing/test-helpers';
 
 describe('ApiService', () => {
@@ -19,7 +19,30 @@ describe('ApiService', () => {
 
   afterEach(() => httpMock.verify());
 
-  describe('unwrap 解包邏輯', () => {
+  describe('isPage 型別守衛（取代舊版 unwrap 結構猜測）', () => {
+    it('完整 Page 結構應回傳 true', () => {
+      expect(isPage(makePage([makeSoap()]))).toBeTrue();
+    });
+
+    it('陣列不應被判定為 Page', () => {
+      expect(isPage([makeSoap()])).toBeFalse();
+    });
+
+    it('一般物件（無 content）應回傳 false', () => {
+      expect(isPage(makeSoap())).toBeFalse();
+    });
+
+    it('有 content 但缺分頁欄位應回傳 false', () => {
+      expect(isPage({ content: [makeSoap()] })).toBeFalse();
+    });
+
+    it('null/undefined 應回傳 false', () => {
+      expect(isPage(null)).toBeFalse();
+      expect(isPage(undefined)).toBeFalse();
+    });
+  });
+
+  describe('get 契約（非 Page 單筆／陣列原樣）', () => {
     it('data 為一般物件時原樣回傳', done => {
       const soap = makeSoap();
       service.get<any>('soaps/1').subscribe(result => {
@@ -40,18 +63,43 @@ describe('ApiService', () => {
         .flush({ success: true, data: list });
     });
 
-    it('data 為含 content 的物件（Spring Page）時解包成陣列', done => {
+    it('data 為 Page 結構時應拋錯並提示改用 getPage/getList（契約違規 fail-fast）', done => {
+      service.get<any>('soaps').subscribe({
+        error: (err) => {
+          expect(err.message).toContain('getList');
+          expect(err.message).toContain('getPage');
+          done();
+        }
+      });
+      httpMock.expectOne(req => req.url.endsWith('/soaps'))
+        .flush({ success: true, data: makePage([makeSoap()], { totalPages: 3 }) });
+    });
+  });
+
+  describe('getList 契約（Page → content 陣列）', () => {
+    it('應拆出 content 陣列', done => {
       const list = [makeSoap({ id: 1 })];
-      service.get<any>('soaps').subscribe(result => {
+      service.getList<any>('soaps').subscribe(result => {
         expect(result).toEqual(list);
         done();
       });
       httpMock.expectOne(req => req.url.endsWith('/soaps'))
         .flush({ success: true, data: makePage(list, { totalPages: 3 }) });
     });
+
+    it('data 非 Page 結構時應拋錯（契約違規 fail-fast）', done => {
+      service.getList<any>('soaps').subscribe({
+        error: (err) => {
+          expect(err.message).toContain('Page');
+          done();
+        }
+      });
+      httpMock.expectOne(req => req.url.endsWith('/soaps'))
+        .flush({ success: true, data: [makeSoap()] });
+    });
   });
 
-  describe('getPage', () => {
+  describe('getPage 契約（完整 Page 中繼資料）', () => {
     it('應保留完整 Page 結構而不解包 content', done => {
       const list = [makeSoap()];
       const page = makePage(list, { totalPages: 5, number: 2, totalElements: 50 });
@@ -63,6 +111,17 @@ describe('ApiService', () => {
       });
       httpMock.expectOne(req => req.url.endsWith('/soaps'))
         .flush({ success: true, data: page });
+    });
+
+    it('data 非 Page 結構時應拋錯（契約違規 fail-fast）', done => {
+      service.getPage<any>('soaps').subscribe({
+        error: (err) => {
+          expect(err.message).toContain('Page');
+          done();
+        }
+      });
+      httpMock.expectOne(req => req.url.endsWith('/soaps'))
+        .flush({ success: true, data: makeSoap() });
     });
   });
 
