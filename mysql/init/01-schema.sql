@@ -113,12 +113,16 @@ CREATE TABLE IF NOT EXISTS soap_essential_oils (
 );
 
 -- 10. Admins Table
+-- 註：此為「MySQL 容器首次初始化」的寬鬆版，僅供 docker-entrypoint-initdb.d 建出基礎表。
+--      最終約束（email UNIQUE、role CHECK (role IN ('ADMIN'))、各欄 NOT NULL）由 Flyway
+--      V2__harden_constraints.sql 收緊，且後端以 ddl-auto=validate 對齊 Admin.java。
+--      請勿以此檔判斷最終 schema；新增/修改約束一律走 Flyway migration。
 CREATE TABLE IF NOT EXISTS admins (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    username VARCHAR(100) NOT NULL UNIQUE,
+    username VARCHAR(50) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
-    email VARCHAR(200),
-    role VARCHAR(50) DEFAULT 'ADMIN',
+    email VARCHAR(100),
+    role VARCHAR(20) DEFAULT 'ADMIN',
     last_login_at TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP

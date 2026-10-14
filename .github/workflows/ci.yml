@@ -56,6 +56,18 @@ jobs:
       - name: Build and test
         run: mvn -B verify
 
+      # JaCoCo 覆蓋率報告（review L12）：jacoco check 已內建於 verify 會把關門檻；
+      # 這裡把 HTML 報告存成 artifact，即使 check 失敗也上傳（if: always()），方便在
+      # PR 直接檢視「哪個類沒覆蓋到」而不用重跑。報告產於 backend/target/site/jacoco/。
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-jacoco-report
+          path: backend/target/site/jacoco/
+          if-no-files-found: warn
+          retention-days: 14
+
   frontend:
     name: frontend
     runs-on: ubuntu-latest
@@ -103,6 +115,10 @@ jobs:
   compose-smoke:
     name: compose-smoke
     runs-on: ubuntu-latest
+    # 測試通過才建映像（review L13）：backend/frontend 的 mvn verify / Karma / build
+    # 全綠才允許 docker compose build，避免把跑不過測試的程式碼打成 image。
+    # secrets/osv 是掃描類、不阻塞建置，故不列入 needs。
+    needs: [backend, frontend]
     steps:
       - uses: actions/checkout@v4
 

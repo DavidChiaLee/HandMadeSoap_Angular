@@ -1,586 +1,214 @@
-# 手工皂前後端分離網站
+# 🧼 手工皂電商前後台系統（handSoap）
 
-單一 Angular 專案 + Spring Boot 後端 + MySQL + Nginx 反向代理，使用 Docker Compose 一鍵啟動。
+> 單一 Angular 前台 + 後台、Spring Boot RESTful API、MySQL，全站以 Docker Compose 一鍵啟動。
+> 從需求到部署、從資安到可觀測性，皆為獨立設計與實作的個人作品。
 
-## 技術架構
+一個功能完整的手工皂品牌網站：前台提供商品瀏覽／分類篩選／搜尋／聯絡表單，後台提供以 JWT
+保護的數據總覽與商品（含圖片上傳）、分類、聯絡管理。全棧、容器化、含安全設計與自動化測試。
 
-- **前端**：Angular 18+ (Standalone) + Tailwind CSS
-- **後端**：Spring Boot 3.x + Spring Security + JWT
-- **資料庫**：MySQL 8.0
-- **反向代理**：Nginx 1.25
-- **部署**：Docker Compose
+---
 
-## 專案結構
+## 📸 畫面預覽
 
-```
-handSoap/
-├── docker-compose.yml          # Docker 編排
-├── .env.example                # 環境變數範例
-├── .gitignore
-├── nginx/
-│   └── nginx.conf              # Nginx 反向代理設定
-├── mysql/
-│   ├── init/                   # 容器「首次初始化」時依檔名順序執行
-│   │   ├── 01-schema.sql       # 資料庫結構
-│   │   ├── 02-auth-native-password.sh
-│   │   ├── 03-seed-oils.sql
-│   │   ├── 04-seed-oil-images.sql
-│   │   └── 05-restore-seed.sh  # 本機有備份時自動還原內容
-│   └── backup/                 # 資料庫備份輸出（.gitignore 已排除，絕不進版控）
-├── backups/                    # 圖片封存與校驗值（同樣已排除）
-│   ├── handsoap-uploads-*.tar.gz
-│   └── checksums/              # sha256 校驗值（獨立目錄，可單獨同步到異機）
-├── docker-compose.dev.yml      # 本機開發覆寫：綁 127.0.0.1:3307（部署時不可帶）
-├── backend/                    # Spring Boot 後端
-│   ├── Dockerfile
-│   ├── .dockerignore
-│   ├── pom.xml
-│   └── src/main/java/com/handsoap/
-│       ├── HandSoapApplication.java
-│       ├── config/
-│       ├── controller/
-│       ├── dto/
-│       ├── entity/
-│       ├── exception/
-│       ├── repository/
-│       └── service/
-├── frontend/                   # Angular 前端
-│   ├── Dockerfile
-│   ├── .dockerignore
-│   ├── package.json
-│   ├── angular.json
-│   ├── tailwind.config.js
-│   ├── postcss.config.js
-│   ├── tsconfig.json
-│   └── src/
-│       ├── index.html
-│       ├── main.ts
-│       ├── styles.css
-│       ├── assets/
-│       ├── app/
-│       │   ├── app.config.ts
-│       │   ├── app.routes.ts
-│       │   ├── app.component.ts
-│       │   ├── shared/
-│       │   │   ├── guards/
-│       │   │   ├── interceptors/
-│       │   │   ├── layout/
-│       │   │   ├── models/
-│       │   │   └── services/
-│       │   ├── front/          # 前台頁面
-│       │   └── admin/          # 後台頁面
-│       └── environments/
-└── uploads/                    # 圖片上傳目錄（Docker volume）
+<!--
+  TODO（作者自行補圖）：
+  放 3~5 張截圖或一段 30 秒操作 GIF，效果遠勝文字。建議：
+  - 前台首頁、商品列表／明細
+  - 後台登入、數據總覽、商品管理（含圖片上傳）
+  範例：
+  ![前台首頁](docs/images/home.png)
+  ![後台總覽](docs/images/dashboard.gif)
+-->
+
+> 尚未附圖。前台於 `http://localhost`、後台於 `http://localhost/admin/login`。
+
+---
+
+## 🏗️ 系統架構
+
+```mermaid
+flowchart LR
+    U[瀏覽器 Browser] -->|HTTP :80| NG[Nginx 反向代理]
+    subgraph handsoap-net[Docker 網路]
+        NG -->|靜態資源 dist| FE[Angular 18 前台/後台]
+        NG -->|/api 反代| BE[Spring Boot 後端 :8080]
+        BE -->|JDBC| DB[(MySQL 8.0)]
+        BK[backup 容器] -->|mysqldump 每 5 分鐘| DB
+    end
+    BE -. . actuator/health/readiness .-> NG
+    DB -. .->|Flyway 遷移| SCHEMA[(schema 版本控管)]
 ```
 
-## 前置需求
+**設計要點**：單一入口（Nginx）對外；後端與 MySQL **不對外公網暴露連接埠**，僅在容器網路內通訊；
+正式版前端走同源相對路徑（`/api`、`/uploads`），由 Nginx 反代，避免 mixed content 與 CORS 麻煩。
 
-- Docker Desktop (建議最新版本)
-- Docker Compose
-- Node.js 20+（本地開發用）
-- Java 17+（本地開發用）
+## 🔐 認證與授權流程
 
-## 快速開始
+```mermaid
+sequenceDiagram
+    participant U as 瀏覽器
+    participant G as Angular Guard/Interceptor
+    participant B as Spring Boot
+    participant DB as MySQL
 
-### 1. 複製環境變數
+    U->>B: POST /auth/login（帳密）
+    B->>DB: 驗證 BCrypt 密碼 + 檢查 token_version
+    B-->>U: access token（15分，僅存記憶體）+ refresh Cookie（HttpOnly, SameSite=Strict）
+    U->>G: 導向受保護路由
+    G->>G: Guard 檢查 exp 未過期 且 role==ADMIN
+    U->>B: 帶 Bearer 請求 /admin/**
+    B-->>U: 200 資料
+    Note over U,B: access token 過期
+    U->>B: 併發 401 → interceptor 打 /auth/refresh（單飛）
+    B->>DB: 比對 refresh hash + token_version
+    B-->>U: 新 access token → 自動重送原請求
+    Note over B,U: refresh 失效/被撤銷 → 登出並導回登入頁（帶 returnUrl）
+```
+
+## ✨ 工程亮點
+
+- **三層 Token 策略**：access token 只放瀏覽器記憶體（防 XSS 竊取）、refresh 走 HttpOnly +
+  `SameSite=Strict` Cookie、後端 `token_version` 支援**即時撤銷**（登出即讓所有裝置的未過期 token 失效）。
+- **單飛 Refresh（single-flight）**：併發的 401 共用同一次 `/auth/refresh` 續杯，避免驚群與競態。
+- **Guard 三重把關**：進入 admin 路由前檢查「有 token、未過期（解 JWT `exp`）、`role==='ADMIN'`」，
+  並以 `returnUrl` 記住原目標頁，登入後導回；已在登入頁時不重複導向。
+- **Schema 版本控管**：Flyway 管理 migration + `ddl-auto=validate` 做 Entity/DB 漂移偵測，fail-fast。
+- **安全硬體化**：Nginx CSP/安全標頭與 `no-store` 快取策略、CORS fail-fast（禁 `*`）、DB 不發布對外埠、
+  後端審計日誌落地、登入採**指數退避**（非硬鎖，避免把弱密碼風險換成後台永久鎖死）。
+- **完整測試**：後端 39 個測試類（Controller/Service/Security/例外）+ 前端 354 個 spec。
+- **CI/CD**：GitHub Actions 平行跑 backend（`mvn verify`）／frontend（Karma + production build）、
+  compose 煙霧測試、secrets 掃描、OSV 依賴掃描；Dependabot 每週升級 npm/maven。
+- **自我 Code Review 閉環**：從 Critical→Low 逐項審查與修正，並記錄每項取捨——見
+  [`docs/review/`](docs/review/2026-09-29-full-code-review.md)。
+
+## 🛠️ 技術棧
+
+| 層級 | 技術 |
+| --- | --- |
+| 前端 | Angular 18（Standalone）+ Tailwind CSS |
+| 後端 | Spring Boot 3.4 + Spring Security + JWT (jjwt) + JPA |
+| 資料庫 | MySQL 8.0 + Flyway |
+| 反向代理 | Nginx（安全標頭、反代、靜態服務） |
+| 容器 | Docker Compose（含健康探針、自動重啟、定期備份） |
+| 測試 | JUnit/MockMvc（後端）、Jasmine/Karma（前端） |
+
+## 🚀 快速啟動（30 秒）
 
 ```bash
-cp .env.example .env
-```
+# 1) 環境變數
+cp .env.example .env          # 至少改 DB_ROOT_PASS / DB_USER / DB_PASS / JWT_SECRET
 
-### 2. 修改 `.env`
+# 2) 建置前端產物（nginx 需要 dist）
+cd frontend && npm install && npm run build && cd ..
 
-請至少修改以下欄位：
-
-- `DB_ROOT_PASS`：MySQL root 密碼
-- `DB_USER`：資料庫使用者名稱
-- `DB_PASS`：資料庫使用者密碼
-- `JWT_SECRET`：至少 256 bits 的隨機金鑰
-
-### 3. 建置前端並啟動全部服務
-
-### 改完程式，需要產生dist
-
-```bash
-cd frontend
-npm install
-npm run build
-cd ..
-
-# 本機開發：帶 docker-compose.dev.yml，MySQL 才會發布在 127.0.0.1:3307
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
-
-# 正式主機部署：不要帶 dev 檔，MySQL 不發布任何對外埠
+# 3) 啟動全部服務
 docker compose up --build
 ```
 
-> 兩個指令的差別只有 `-f docker-compose.dev.yml`。`docker-compose.dev.yml` **刻意不叫**
-> `docker-compose.override.yml` —— 後者會被 `docker compose up` 自動套用，部署時會在不知情的
-> 狀況下把資料庫埠重新開到 `0.0.0.0:3307`（review H6）。詳見該檔頭部註解。
+> 本機開發若要用 GUI 工具連 MySQL，改帶 `-f docker-compose.dev.yml`（埠只綁 `127.0.0.1:3307`）。
 
-或使用開發模式分別啟動：
+### ✅ 起完後 30 秒驗證全站活著
 
 ```bash
-# 終端機 1：啟動後端（backend 沒有 Maven wrapper，需本機 Maven 3.9+ 與 JDK 17）
-# 啟動前必須先提供 DATABASE_PASSWORD 與 JWT_SECRET，否則會啟動失敗（設計如此，詳見「本地開發」）
-cd backend
-mvn spring-boot:run
-
-# 終端機 2：啟動前端
-cd frontend
-npm install
-npm start
+docker compose ps                                   # nginx/backend/mysql/backup 應為 running / healthy
+curl -s http://localhost/actuator/health/readiness  # backend readiness，含 DB 檢查
+# 開瀏覽器：http://localhost            （前台）
+#           http://localhost/admin/login （後台，需先建立管理員，見下）
 ```
 
-### 4. 初始化後台管理員
-
-> ⚠️ **安全性變更**：早期版本是「`admins` 資料表為空時，任何人都能匿名呼叫
-> `POST /api/v1/admin/admins` 建立第一個管理員」。這等於把「部署完成、owner 還沒建立
-> 帳號」的時間窗完全開放給公網，任何人都能搶先建立 `ADMIN` 帳號接管後台。
-> **該端點現已全面要求 ADMIN 權限**，首位管理員改由後端啟動時自動建立。
-
-**方式 A：啟動時自動建立（建議）**
-
-在專案根目錄的 `.env` 設定（值可參考 `.env.example`）：
+首次需建立後台管理員（安全設計，不開放匿名建號）：
 
 ```bash
-BOOTSTRAP_ENABLED=true
-BOOTSTRAP_ADMIN_USERNAME=admin
-BOOTSTRAP_ADMIN_PASSWORD=<請填一組夠強的密碼>
-BOOTSTRAP_ADMIN_EMAIL=admin@example.com
-```
-
-接著啟動：
-
-```bash
+# .env 設 BOOTSTRAP_ENABLED=true + BOOTSTRAP_ADMIN_USERNAME/PASSWORD/EMAIL 後：
 docker compose up -d backend
-docker compose logs -f backend   # 看到 "[bootstrap] 已建立首位管理員" 即完成
+docker compose logs -f backend   # 看到「[bootstrap] 已建立首位管理員」即完成
+# 完成後請立即登入改密碼，並把 BOOTSTRAP_ENABLED 改回 false
 ```
 
-完成後請務必：
+### ⚠️ 常見問題
 
-1. 登入後台（http://localhost/admin/login）並**立即更換密碼**
-2. 把 `.env` 的 `BOOTSTRAP_ENABLED` 改回 `false`
+- **前台是舊版／樣式錯亂**：前端改了但沒重新 `npm run build`，nginx 吃到舊 `dist`。
+- **backend 起不來（`Could not resolve placeholder 'DATABASE_PASSWORD'`）**：`.env` 缺少必要值。
+- **登入顯示「請重新登入」卻進不去**：檢查 `.env` 的 `JWT_SECRET` 是否與啟動時一致（改動會讓舊 token 失效）。
+- 其餘部署／備份／還原／TLS 細節請見 **[維運手冊 OPERATIONS.md](OPERATIONS.md)**。
 
-> 後端啟動時會檢查 `admins` 表：**已有任何帳號就會跳過**，絕不會覆蓋既有管理員。
-> 因此本機若有 `mysql/backup/` 備份（`05-restore-seed.sh` 會自動還原），bootstrap 會直接跳過，
-> 此時不需要設定上面三個變數。
+## 🧭 功能導覽
 
-**方式 B：直接連線 MySQL 插入**
+**前台**
 
-```sql
-INSERT INTO admins (username, password_hash, email, role)
-VALUES ('admin', '$2a$10$...', 'admin@example.com', 'ADMIN');
-```
+| 路徑 | 說明 |
+| --- | --- |
+| `/` | 首頁（Banner、最新商品、分類快速連結） |
+| `/soaps` | 手工皂列表（分類篩選、搜尋、排序） |
+| `/soaps/:id` | 手工皂明細 |
+| `/oils` | 油品列表 |
+| `/oils/:id` | 油品明細 |
+| `/essential-oils` | 精油列表 |
+| `/essential-oils/:id` | 精油明細 |
+| `/about` | 關於我們 |
+| `/contact` | 聯絡我們 |
 
-密碼需使用 BCrypt 編碼。
+**後台**（需 JWT + ADMIN）
 
-### 5. 訪問網站
+| 路徑 | 說明 |
+| --- | --- |
+| `/admin/login` | 後台登入 |
+| `/admin/dashboard` | 數據總覽 |
+| `/admin/categories` | 分類管理（新增/編輯/刪除） |
+| `/admin/soaps` | 手工皂管理（含圖片上傳） |
+| `/admin/oils` | 油品管理（含圖片上傳） |
+| `/admin/essential-oils` | 精油管理（含圖片上傳） |
+| `/admin/contacts` | 聯絡表單管理 |
 
-- **前台**：http://localhost
-- **後台登入**：http://localhost/admin/login
-- **MySQL**：正式部署刻意不發布對外埠。本機開發請見「本地開發 › 資料庫連線」
+## 📡 API 概覽
 
-## 前台頁面
-
-| 路徑                  | 說明                                   |
-| --------------------- | -------------------------------------- |
-| `/`                   | 首頁（Banner、最新商品、分類快速連結） |
-| `/soaps`              | 手工皂列表（分類篩選、搜尋、排序）     |
-| `/soaps/:id`          | 手工皂明細                             |
-| `/oils`               | 油品列表                               |
-| `/oils/:id`           | 油品明細                               |
-| `/essential-oils`     | 精油列表                               |
-| `/essential-oils/:id` | 精油明細                               |
-| `/about`              | 關於我們                               |
-| `/contact`            | 聯絡我們                               |
-
-## 後台功能
-
-| 路徑                    | 說明                       |
-| ----------------------- | -------------------------- |
-| `/admin/login`          | 後台登入                   |
-| `/admin/dashboard`      | 數據總覽                   |
-| `/admin/categories`     | 分類管理（新增/編輯/刪除） |
-| `/admin/soaps`          | 手工皂管理（含圖片上傳）   |
-| `/admin/oils`           | 油品管理（含圖片上傳）     |
-| `/admin/essential-oils` | 精油管理（含圖片上傳）     |
-| `/admin/contacts`       | 聯絡表單管理               |
-
-## API 規格
-
-### 前台（公開）
+**前台（公開）**
 
 ```
-GET    /api/v1/categories
-GET    /api/v1/soaps
-GET    /api/v1/soaps/{id}
-GET    /api/v1/soaps/category/{categoryId}
-GET    /api/v1/soaps/search?keyword={keyword}
-GET    /api/v1/soaps/featured
-GET    /api/v1/oils
-GET    /api/v1/oils/{id}
-GET    /api/v1/essential-oils
-GET    /api/v1/essential-oils/{id}
-POST   /api/v1/contacts
+GET  /api/v1/categories
+GET  /api/v1/soaps                # 支援 keyword、categoryId、分頁/排序
+GET  /api/v1/soaps/{id}
+GET  /api/v1/soaps/featured
+GET  /api/v1/oils
+GET  /api/v1/essential-oils
+POST /api/v1/contacts
 ```
 
-### 後台（需 JWT）
+**後台（需 ADMIN JWT）**
 
 ```
 POST   /api/v1/auth/login
-
-POST   /api/v1/admin/admins
-       （第一個管理員為 bootstrap；之後需 ADMIN JWT）
-
-GET    /api/v1/admin/categories
-POST   /api/v1/admin/categories
-PUT    /api/v1/admin/categories/{id}
-DELETE /api/v1/admin/categories/{id}
-
-GET    /api/v1/admin/soaps?keyword={keyword}
-POST   /api/v1/admin/soaps
-PUT    /api/v1/admin/soaps/{id}
-DELETE /api/v1/admin/soaps/{id}
-POST   /api/v1/admin/soaps/{soapId}/images
-
-GET    /api/v1/admin/oils?keyword={keyword}
-POST   /api/v1/admin/oils
-PUT    /api/v1/admin/oils/{id}
-DELETE /api/v1/admin/oils/{id}
-
-GET    /api/v1/admin/essential-oils?keyword={keyword}
-POST   /api/v1/admin/essential-oils
-PUT    /api/v1/admin/essential-oils/{id}
-DELETE /api/v1/admin/essential-oils/{id}
-
-GET    /api/v1/admin/contacts
-PUT    /api/v1/admin/contacts/{id}
+GET    /api/v1/admin/categories          POST/PUT/DELETE /categories/{id}
+GET    /api/v1/admin/soaps?keyword=      POST/PUT/DELETE /soaps/{id}  + /soaps/{id}/images
+GET    /api/v1/admin/oils                POST/PUT/DELETE /oils/{id}
+GET    /api/v1/admin/essential-oils      POST/PUT/DELETE /essential-oils/{id}
+GET    /api/v1/admin/contacts            PUT /contacts/{id}
 ```
 
-## 資料庫表結構
+## 📁 專案結構
 
-- `categories` - 產品分類
-- `soaps` - 手工皂主表
-- `soap_images` - 手工皂圖片
-- `oils` - 油品主表
-- `oil_images` - 油品圖片
-- `essential_oils` - 精油主表
-- `essential_oil_images` - 精油圖片
-- `admins` - 後台管理員
-- `contacts` - 聯絡表單
-
-## 本地開發
-
-### 後端
-
-`application.properties` 刻意**不含任何機密預設值**，所以直接啟動前必須先提供連線資訊，
-否則 Spring Boot 會明確報 `Could not resolve placeholder 'DATABASE_PASSWORD'` 而失敗。
-這是設計行為——避免用寫死的 `root/root` 或公開的 JWT 金鑰悄悄跑起來。
-
-```bash
-# Linux / macOS：鍵名與可抄的範例值見專案根目錄 .env.example
-export DATABASE_URL='jdbc:mysql://localhost:3307/handsoap?useSSL=false&allowPublicKeyRetrieval=true&createDatabaseIfNotExist=true'
-export DATABASE_USERNAME=handsoap_user
-export DATABASE_PASSWORD='與 .env 的 DB_PASS 相同'
-export JWT_SECRET='與 .env 的 JWT_SECRET 相同'
-cd backend
-mvn spring-boot:run        # backend 無 Maven wrapper，需本機 Maven 3.9+ / JDK 17
+```
+handSoap/
+├── docker-compose.yml          # 編排：nginx + backend + mysql + backup（含健康探針/重啟）
+├── docker-compose.dev.yml      # 本機開發覆寫：MySQL 僅綁 127.0.0.1:3307
+├── nginx/nginx.conf            # 反向代理 + 安全標頭 + 靜態服務
+├── mysql/init/                 # Flyway schema 遷移 + 種子資料
+├── backend/                    # Spring Boot（config/controller/service/repository/entity/dto）
+├── frontend/                   # Angular（front 前台 / admin 後台 / shared 共用）
+├── OPERATIONS.md               # 維運手冊（部署/開發/DB/備份還原/TLS/安全）
+├── docs/
+│   └── review/                 # 程式碼審查記錄與修正（本機保留，未進版控）
+└── .github/
+    ├── workflows/ci.yml        # CI：測試 + build + compose 煙霧 + 掃描
+    └── dependabot.yml          # 每週自動升級 npm/maven
 ```
 
-Windows PowerShell 用 `$env:DATABASE_PASSWORD='...'` 設定，或把這些鍵值寫進專案根目錄的
-`application-local.properties`（此檔名已被 `.gitignore` 排除；`application.properties`
-已用 `spring.config.import=optional:file:./application-local.properties` 自動載入它）。
+## 📚 延伸閱讀
 
-> ⚠️ 下列指令中的 **3307 只在本機有啟動 `docker-compose.dev.yml` 時才存在**。
-> 正式部署（`docker compose up`）刻意不發布 MySQL 對外埠，此時請改用容器內
-> `docker compose exec` 查詢，或走 SSH tunnel —— 詳見下方「資料庫連線」。
->
-> 若只想改 schema 行為，可另設 `HIBERNATE_DDL=update`；預設為 `validate`，
-> 因為 schema 由 Flyway 版本控管（`backend/.../db/migration/V1/V2`），啟動時會做漂移偵測；
-> `update` 會讓 Hibernate 自動改表、與遷移腳本互相漂移，僅供本機除錯。
+- [維運手冊 OPERATIONS.md](OPERATIONS.md) — 部署、本機開發、資料庫連線、備份還原演練、TLS 上線、secrets 掃描
+- [程式碼審查記錄](docs/review/2026-09-29-full-code-review.md) — 從 Critical 到 Low 的問題盤點與修正決策
 
-### 資料庫連線
+---
 
-`docker-compose.yml` 刻意**不發布 MySQL 對外埠**（review H6）：雲主機公網 IP 下發布
-3307 等於資料庫裸奔，root 密碼強度會是唯一防線。容器之間改走 `handsoap-net` 內部 DNS
-（`backend` → `mysql:3306`、`backup` → `mysql`）。
+<sub>授權：本專案為個人作品集用途。</sub>
 
-本機開發因此用 `-f docker-compose.dev.yml` 補回直連能力，**只綁 `127.0.0.1`**：
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
-```
-
-| 情境 | MySQL 可連線位址 |
-| --- | --- |
-| 本機開發（帶 dev 檔） | `localhost:3307`（僅 loopback） |
-| 本機 / 正式部署（不帶 dev 檔） | 無對外埠；僅容器網路內的 `mysql:3306` |
-
-**容器內查詢**（bash 與 PowerShell 通用）：
-
-```bash
-# 不帶 -uroot 會讓 MySQL 拿 OS 使用者名去登入，直接 ERROR 1045；
-# 密碼走環境變數，不要打進指令（會留在 shell history）
-docker compose exec mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" handsoap'
-```
-
-PowerShell 下還原備份要用管線（`<` 在 PowerShell 是保留字）：
-
-```powershell
-Get-Content -Raw mysql/backup/05-latest-backup.sql |
-  docker compose exec -T mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" handsoap'
-```
-
-> `-T` 不可省略：`docker compose exec` 預設配置 TTY，會截斷 stdin 上的備份內容。
-
-**正式主機要用 GUI 工具（DBeaver / MySQL Workbench）連線** —— 不要用 dev 檔，
-改走 SSH tunnel：
-
-```bash
-ssh -N -L 3307:127.0.0.1:3307 root@<your-vps-ip>
-```
-
-> ⚠️ 由於正式部署時宿主上**沒有**任何 MySQL 埠，上面的 tunnel 目的地抓不到東西。
-> 實際可行的兩種做法：(1) 在 VPS 上以 `docker exec -it handsoap-mysql-1 mysql` 直接查詢；
-> (2) 若確實需要 GUI，改為在 VPS 加載 `docker-compose.dev.yml` 啟動（此時埠只綁
-> `127.0.0.1`，公網仍連不到，tunnel 才有意義）—— 但**代價是正式機多了一個本機埠**，
-> 是否接受請自行評估。
-
-`mysql/init/02-auth-native-password.sh` 把帳號改為 `mysql_native_password`，
-正是為了讓這類 GUI 工具能走非 SSL 連線，**刪除 ports 後該需求依然存在，不應刪除**。
-
-### 前端
-
-```bash
-cd frontend
-npm install
-npm start
-```
-
-#### 前端 API／圖片基址
-
-前端有兩份環境設定，由 `frontend/angular.json` 的 `configurations.production.fileReplacements` 在建置期切換：
-
-| 檔案 | 使用時機 | `apiUrl` | `uploadUrl` |
-| --- | --- | --- | --- |
-| `src/environments/environment.ts` | `npm start`（ng serve）、`npm test` | `http://localhost:8080/api/v1` | `http://localhost:8080/uploads/` |
-| `src/environments/environment.prod.ts` | `npm run build`（production） | `/api/v1` | `/uploads/` |
-
-- 正式版走**同源相對路徑**，由 nginx 反代 `/api/` 與 `/uploads/` 到 `backend:8080`，因此不受網域／連接埠影響，也不會有 mixed content。
-- 圖片網址只能透過 `FileUrlService` 產生（模板用 `[src]="fileUrl(images)"`），不要在模板硬編 `localhost:8080`；沒有圖片時會顯示 `src/assets/placeholder.svg`。
-- 只改 `environment.prod.ts` 不會有任何效果——它必須靠 `fileReplacements` 才會取代 `environment.ts`。
-- 正式版 API 是相對路徑，所以 `ng serve --configuration production` 會失效（相對路徑指向 4200）；要驗證正式版請用 `docker compose up --build`。
-- 產物檢查（CI 可用）：
-
-```powershell
-cd frontend; npm run build; cd ..
-pwsh ./scripts/verify-frontend-dist.ps1
-```
-
-## 環境變數說明
-
-| 變數                | 使用情境                     | 說明               | 預設值                                      |
-| ------------------- | ---------------------------- | ------------------ | ------------------------------------------- |
-| `DB_ROOT_PASS`      | docker compose（MySQL）      | MySQL root 密碼    | 無，必要                                    |
-| `DB_USER`           | docker compose               | 資料庫使用者       | 無，必要                                    |
-| `DB_PASS`           | docker compose               | 資料庫密碼         | 無，必要                                    |
-| `JWT_SECRET`        | compose 與本機直跑           | JWT 簽章金鑰       | **無**；未設定會啟動失敗                    |
-| `DATABASE_URL`      | 本機直跑 Spring Boot         | 資料庫連線字串     | `jdbc:mysql://localhost:3307/handsoap?...`（3307 需帶 `docker-compose.dev.yml`；正式部署無對外埠） |
-| `DATABASE_USERNAME` | 本機直跑 Spring Boot         | 資料庫使用者       | `root`                                      |
-| `DATABASE_PASSWORD` | 本機直跑 Spring Boot         | 資料庫密碼         | **無**；未設定會啟動失敗                    |
-| `HIBERNATE_DDL`     | 本機直跑 Spring Boot         | Hibernate schema 策略 | `validate`                               |
-| `SHOW_SQL`          | 本機直跑 Spring Boot         | 是否印出 SQL       | `false`                                     |
-| `FILE_UPLOAD_DIR`   | 容器／本機                   | 圖片上傳目錄       | `/app/uploads`                              |
-| `SERVER_PORT`       | 容器／本機                   | 後端埠號           | `8080`                                      |
-
-> 容器內不需要 `DATABASE_PASSWORD`：`docker-compose.yml` 直接注入 `SPRING_DATASOURCE_*`，
-> 會覆蓋 `application.properties` 的同名屬性（Spring 的 relaxed binding）。
-> 完整可抄的鍵名清單請看 `.env.example`。
->
-> ⚠️ 本機直跑後端必須**同時**具備：MySQL 已用 `-f docker-compose.dev.yml` 啟動，
-> 否則 `localhost:3307` 無人監聽，後端會以 `Communications link failure` 啟動失敗。
-
-## 安全性備忘
-
-- 請勿將 `.env` 加入版本控制
-- `application.properties` 只准寫 `${ENV_VAR}` 引用，**不准寫機密預設值**
-  （`${VAR:某某某}` 的「某某某」一樣會被 `.githooks/pre-commit` 擋下，並會進版控與 Docker image）
-- 需要本機便利設定時，改放 `application-local.properties`（已被 `.gitignore` 排除）
-- `JWT_SECRET` 請使用至少 256 bits 的強亂數
-- **本專案目前僅提供 HTTP，尚未啟用 TLS**（`docker-compose.yml` 刻意不發布 443）。
-  正式環境請改用 HTTPS 部署，詳見下方「尚未啟用 TLS」；在 TLS 上線前，
-  登入密碼與 Bearer token 皆以明碼通過網路。
-- 定期更新 Docker base image
-
-### 尚未啟用 TLS
-
-`nginx/nginx.conf` 目前只有 `listen 80`，`docker-compose.yml` 也**刻意不發布 443**
-（review H8 階段 1）。這代表：
-
-- 站台目前**僅提供 HTTP**，登入密碼與 JWT token 以明碼傳輸
-- `docker-compose.yml` 的 `443:443` 是註解狀態 —— 發布一個容器內無人監聽的埠，
-  症狀會是「TCP 建立後無回應」而非 `connection refused`，容易誤判成防火牆問題
-
-要啟用 TLS，建議流程：
-
-1. 準備正式網域，把 DNS A 記錄指向主機（Let's Encrypt 需要）
-2. 在 `.env` 設定 `DOMAIN` 與 `ACME_EMAIL`
-3. 加 `certbot` sidecar 與憑證 volume，並發布 443
-4. 將 `nginx.conf` 拆成 `listen 80`（ACME 驗證路徑 + `return 301`）與 `listen 443 ssl` 兩個 server block
-5. **同步**把 `CORS_ALLOWED_ORIGINS` 改成 `https://<網域>`，否則全站 403
-
-> ⚠️ 上 TLS 前務必讀 `docker-compose.yml` 中 nginx service 的註解，
-> 內含三個容易造成死鎖或全站故障的坑（ACME 301 死鎖、`listen ... ssl http2` 過時、
-> CORS 白名單必須同步），並記錄在 `docs/review/2026-09-29-full-code-review.md` §0.6。
->
-> 建議 **HSTS 先用 `max-age=300` 觀察一週**，確認憑證自動續期正常後再拉長。
-> HSTS 一旦被瀏覽器記住，憑證過期且續期失敗時使用者端會卡死，且清除快取救不回來。
-
-## 機密與備份（推送至 GitHub 前必讀）
-
-### 資料庫與圖片備份
-
-`backup` 服務每 5 分鐘產生一組備份（review H7）：
-
-| 產物 | 位置 | 說明 |
-| --- | --- | --- |
-| 資料庫 | `mysql/backup/handsoap-<YYYYmmdd-HHMM>.sql.gz` | `mysqldump`（gzip 壓縮） |
-| 圖片 | `backups/handsoap-uploads-<YYYYmmdd-HHMM>.tar.gz` | `uploads/` **整目錄**封存 |
-| 校驗值 | `backups/checksums/<YYYYmmdd-HHMM>.sha256` | 用於驗證備份未損毀 |
-| 相容別名 | `mysql/backup/05-latest-backup.sql` | 明文副本，供自動還原使用 |
-
-**圖片為什麼是整目錄封存**：過去只備份 `essential_oil_images` 參照的檔案，實測 82 張圖中只備到 33 張
-（**漏了 72%**），災後還原會得到「資料庫有紀錄、但圖片 404」的結果。改備整個 `uploads/` 後，
-連「資料庫已刪除但磁碟殘留」的孤兒檔也會一併保留。腳本另會比對 DB 三張圖片表
-（`soap_images` / `oil_images` / `essential_oil_images`）與磁碟，發現缺檔時在 log 提出警告
-（**只警告、不中斷備份** —— 不會因為一張圖不見就讓整組備份停擺）。
-
-#### 磁碟用量（部署前務必評估）
-
-`uploads/` 目前約 **164MB**，每 5 分鐘一份 = 每日 288 份：
-
-| `BACKUP_INTERVAL` | `BACKUP_KEEP_DAYS` | 約需空間 |
-| --- | --- | --- |
-| 300（5 分鐘，預設） | 7 | **約 60GB** ⚠️ |
-| 1800（30 分鐘） | 7 | 約 10GB |
-| 3600（1 小時） | 7 | 約 4.2GB |
-| 3600（1 小時） | 30 | 約 18GB |
-
-在 `.env` 設定 `BACKUP_KEEP_DAYS` 即可調整保留天數。**常見 20–40GB 的 VPS 磁碟無法使用預設值**，
-請依實際容量調大 `BACKUP_INTERVAL`（`docker-compose.yml` 的 `backup.environment`）。
-
-#### 驗證備份完整性
-
-```powershell
-# 1. 比對 sha256（會印出 OK 即代表未損毀）
-cd mysql\backup
-Get-FileHash -Algorithm SHA256 (Get-ChildItem handsoap-*.sql.gz | Sort-Object LastWriteTime | Select-Object -Last 1).Name |
-  ForEach-Object { "$($_.Hash.ToLower())  $($_.Path | Split-Path -Leaf)" }
-
-# 與 backups/checksums/ 內同時間戳的檔案內容相同即正確
-```
-
-```bash
-# Linux / macOS
-cd mysql/backup
-sha256sum -c "$(ls -t handsoap-*.sql.gz | head -1 | sed 's|^|../../backups/checksums/|; s|\.sql\.gz$|.sha256|')"
-```
-
-### 還原演練（建議每月實際做一次）
-
-**沒有實際還原過的備份，不能算備份。** 完整流程：
-
-```powershell
-# 0. 確認目前有備份（否則以下步驟會清空資料且無從還原）
-Get-ChildItem mysql\backup\handsoap-*.sql.gz, backups\handsoap-uploads-*.tar.gz
-
-# 1. 備份現有資料庫（演練後若要保留現況可再還原回來）
-#    —— 這一步不能跳過，down -v 會刪除整個 volume
-docker compose -f docker-compose.yml -f docker-compose.dev.yml exec -T mysql sh -c `
-  'mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" --single-transaction handsoap | gzip' > before-drill.sql.gz
-
-# 2. 清空 volume，模擬災難（資料會全部消失）
-docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v
-
-# 3. 重新啟動 —— 05-restore-seed.sh 會自動還原備份
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
-
-# 4. 確認還原成功
-docker compose -f docker-compose.yml -f docker-compose.dev.yml logs mysql | Select-String '=> 已從'
-docker compose -f docker-compose.yml -f docker-compose.dev.yml exec -T mysql sh -c `
-  'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" handsoap -e "SELECT COUNT(*) AS soaps FROM soaps; SELECT COUNT(*) AS images FROM soap_images;"'
-
-# 5. 圖片也要能存取
-#    DB 有紀錄 + uploads/ 有檔案  →  兩者數量應一致
-docker compose -f docker-compose.yml -f docker-compose.dev.yml exec -T mysql sh -c `
-  'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" handsoap -e "SELECT COUNT(*) FROM essential_oil_images;"'
-(Get-ChildItem uploads -File).Count
-```
-
-> ⚠️ 步驟 2 會**真的刪除資料**。請先確認步驟 1 已備份，且不要在正式環境的尖峰時段執行。
->
-> 演練後若要回到演練前的狀態，還原步驟 1 的檔案即可。
-
-### 資料庫備份不進版控
-
-所有備份產物都是**即時資料**，內含：
-
-- `admins.password_hash`：管理員密碼的 BCrypt 雜湊（可離線爆破）
-- `contacts`：客戶姓名、Email、電話（個人隱私）
-
-因此 `mysql/backup/`、`backups/`、`backups/checksums/` 全部列入 `.gitignore`。
-**過去此機制曾把 dump 直接寫進 `mysql/init/`（即 `docker-entrypoint-initdb.d`），
-使備份變成版控裡的種子檔，等於把密碼雜湊與客戶個資推到公開倉庫**；現已修正。
-
-### 全新環境的行為
-
-| 情境 | 結果 |
-| --- | --- |
-| 有 `05-latest-backup.sql`（相容別名） | `05-restore-seed.sh` 優先還原它 |
-| 僅有 `handsoap-*.sql.gz`（相容別名遺失） | 腳本自動改用最新的日期備份（gzip 解壓後還原） |
-| 完全沒有備份 | 跳過還原，僅套用 `01`~`04` 的 schema 與示範資料，管理員以 bootstrap 建立 |
-
-手動還原既有備份：
-
-```bash
-# 相容別名（明文）
-docker compose exec -T mysql sh -c \
-  'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" handsoap' < mysql/backup/05-latest-backup.sql
-
-# 日期備份（gzip，記得加 -T 關閉 TTY 否則 stdin 會被截斷）
-docker compose exec -T mysql sh -c \
-  'gzip -dc /dev/stdin | mysql -uroot -p"$MYSQL_ROOT_PASSWORD" handsoap' < mysql/backup/handsoap-20261005-1000.sql.gz
-```
-
-### 推送前的檢查
-
-```powershell
-# 確認沒有機密檔被納入版控、且無硬編碼金鑰
-pwsh ./scripts/verify-no-secrets.ps1
-# Windows PowerShell 亦可
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-no-secrets.ps1
-```
-
-腳本會先比對「會被提交的檔案清單」（直接採用 `.gitignore` 結果），再掃描 BCrypt 雜湊、
-私鑰、AWS/GitHub/Slack token 與硬編碼密碼；`${ENV_VAR}` 佔位與測試檔假金鑰不會誤報。
-發現問題時回傳 exit code 1。
-
-建議同時啟用 pre-commit 阻擋（**每個 clone 都要跑一次**，`core.hooksPath` 不會被 clone 複制）：
-
-```bash
-git config core.hooksPath .githooks
-```
-
-啟用後每次 `git commit` 會自動掃描（約 30 秒）；緊急情況下可用 `git commit --no-verify` 跳過。
-
-### 若機密已經被推送過
-
-單純刪除檔案**無效**，Git 歷史仍留檔。需執行：
-
-```bash
-git filter-repo --path mysql/backup/05-latest-backup.sql --invert-paths
-git push --force --all
-```
-
-並**立即輪替**：MySQL `root` / `DB_USER` 密碼、`JWT_SECRET`、以及所有管理員密碼。

@@ -1,0 +1,51 @@
+# OWASP Dependency-Check（review L12 Phase 2）：每週掃描 Maven 依賴的已知漏洞，
+# 產報告存成 artifact。刻意「排 schedule + 不擋 merge」——理由見 .github/dependabot.yml：
+# dependency-check 要下載全量 CVE DB（首次 10min 起跳）、Java 誤報率高，若放進 PR
+# 擋線，沒設 NVD_API_KEY 會讓整條 CI 紅、被誤判為不可用。因此只作「定期可見的報告」，
+# 真正的升級閉環由 Dependabot + CI 測試負責。
+name: dependency-check
+
+on:
+  schedule:
+    # 每週一 04:00（Asia/Taipei，UTC+8 → 週日 20:00 UTC）
+    - cron: "0 20 * * 0"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-check:
+    name: dependency-check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+          cache: maven
+
+      # NVD_API_KEY：選用。有 key 可大幅加速 NVD 資料下載並降低被限流機率；
+      # 沒設也能跑（用較慢的公開端點）。請在 repo Settings → Secrets 加入 NVD_API_KEY。
+      - name: Run OWASP dependency-check
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        # 純報告：掃完仍以 exit 0 結束（不因發現漏洞就讓 workflow 紅）。
+        # 報告產於 target/dependency-check-report.{html,csv,json}。
+        run: mvn -B org.owasp:dependency-check-maven:check -Dformat=HTML -Dformat=CSV
+        continue-on-error: true
+
+      - name: Upload dependency-check report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-check-report
+          path: backend/target/dependency-check-report.*
+          if-no-files-found: warn
+          retention-days: 30

@@ -1,6 +1,5 @@
 import { HttpInterceptorFn, HttpErrorResponse, HttpRequest, HttpHandlerFn, HttpEvent } from '@angular/common/http';
 import { inject } from '@angular/core';
-import { Router } from '@angular/router';
 import { BehaviorSubject, Observable, catchError, filter, switchMap, take, throwError } from 'rxjs';
 import { AuthService } from '../services/auth.service';
 
@@ -26,7 +25,6 @@ function isAuthEndpoint(req: HttpRequest<unknown>): boolean {
 
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const authService = inject(AuthService);
-  const router = inject(Router);
 
   const token = authService.getToken();
   let outReq = req.clone({ withCredentials: true });
@@ -40,12 +38,13 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
         // 非 401、或認證端點自己 401（帳密錯／refresh 失效／匿名 logout）
         // 不續杯；若是 refresh 失效由呼叫端（handle401）統一 logout。
         if (error.status === 401 && req.url.includes('/auth/refresh')) {
+          // logout() 內部已集中導向登入頁（帶 returnUrl、避免重複導向），
+          // 不再額外 navigate。
           authService.logout();
-          router.navigate(['/admin/login']);
         }
         return throwError(() => error);
       }
-      return handle401(req, next, authService, router);
+      return handle401(req, next, authService);
     })
   );
 };
@@ -53,8 +52,7 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
 function handle401(
   failedReq: HttpRequest<unknown>,
   next: HttpHandlerFn,
-  authService: AuthService,
-  router: Router
+  authService: AuthService
 ): Observable<HttpEvent<unknown>> {
   if (!refreshInFlight) {
     refreshInFlight = true;
@@ -67,8 +65,8 @@ function handle401(
         refreshSubject!.next(newToken);
         refreshSubject!.complete();
         if (!newToken) {
+          // logout() 內部已導向登入頁（帶 returnUrl），不需再 navigate。
           authService.logout();
-          router.navigate(['/admin/login']);
           return throwError(() => new Error('Refresh failed'));
         }
         const retry = failedReq.clone({
@@ -81,8 +79,8 @@ function handle401(
         refreshInFlight = false;
         refreshSubject!.error(err);
         refreshSubject = null;
+        // logout() 內部已導向登入頁（帶 returnUrl），不需再 navigate。
         authService.logout();
-        router.navigate(['/admin/login']);
         return throwError(() => err);
       })
     );

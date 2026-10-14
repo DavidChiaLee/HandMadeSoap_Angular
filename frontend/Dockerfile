@@ -17,6 +17,9 @@ RUN npm run build
 
 # Serve stage
 FROM nginx:alpine
-COPY --from=build /app/dist/frontend/browser/browser/ /usr/share/nginx/html/
+# outputPath 已設 { browser: "dist/frontend", server: "" }（angular.json），
+# 產物直接在 dist/frontend/（不再有 browser/browser 雙層）。若日後改 outputPath，
+# 這裡的 COPY 來源必須同步，否則會 COPY 到空目錄——CI 的 compose build + up 當防線。
+COPY --from=build /app/dist/frontend/ /usr/share/nginx/html/
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]

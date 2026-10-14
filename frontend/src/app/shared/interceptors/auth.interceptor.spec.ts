@@ -5,6 +5,7 @@ import {
   provideHttpClientTesting
 } from '@angular/common/http/testing';
 import { Router } from '@angular/router';
+import { of, throwError } from 'rxjs';
 import { authInterceptor } from './auth.interceptor';
 import { AuthService } from '../services/auth.service';
 
@@ -17,9 +18,12 @@ describe('authInterceptor', () => {
   beforeEach(() => {
     authService = jasmine.createSpyObj<AuthService>('AuthService', [
       'getToken',
-      'logout'
+      'logout',
+      'refresh'
     ]);
     router = jasmine.createSpyObj<Router>('Router', ['navigate']);
+    // refresh 預設回報成功（續杯），避免干擾非 refresh 相關案例。
+    authService.refresh.and.returnValue(of({ accessToken: 'new-token' } as any));
 
     TestBed.configureTestingModule({
       providers: [
@@ -55,8 +59,28 @@ describe('authInterceptor', () => {
     req.flush({});
   });
 
-  it('收到 401 時應登出並導向登入頁', () => {
+  it('收到 401 時應先 refresh 續杯，成功則以新 token 重送（不登出）', () => {
     authService.getToken.and.returnValue('jwt-token');
+    authService.refresh.and.returnValue(of({ accessToken: 'new-token' } as any));
+
+    http.get('/api/v1/admin/soaps').subscribe();
+
+    httpMock
+      .expectOne('/api/v1/admin/soaps')
+      .flush({ message: 'Unauthorized' }, { status: 401, statusText: 'Unauthorized' });
+
+    // refresh 續杯成功 → 重送原請求（帶新 token），不登出。
+    const retry = httpMock.expectOne('/api/v1/admin/soaps');
+    expect(retry.request.headers.get('Authorization')).toBe('Bearer new-token');
+    retry.flush({});
+
+    expect(authService.refresh).toHaveBeenCalled();
+    expect(authService.logout).not.toHaveBeenCalled();
+  });
+
+  it('refresh 也失效時應登出（導向登入頁由 logout 內部處理，不再重複 navigate）', () => {
+    authService.getToken.and.returnValue('jwt-token');
+    authService.refresh.and.returnValue(throwError(() => ({ status: 401 })));
     let caught: any = null;
 
     http.get('/api/v1/admin/soaps').subscribe({ error: e => caught = e });
@@ -66,7 +90,8 @@ describe('authInterceptor', () => {
       .flush({ message: 'Unauthorized' }, { status: 401, statusText: 'Unauthorized' });
 
     expect(authService.logout).toHaveBeenCalled();
-    expect(router.navigate).toHaveBeenCalledWith(['/admin/login']);
+    // interceptor 不再自行 navigate（避免與 logout 重複導向）。
+    expect(router.navigate).not.toHaveBeenCalled();
     expect(caught).toBeTruthy();
   });
 

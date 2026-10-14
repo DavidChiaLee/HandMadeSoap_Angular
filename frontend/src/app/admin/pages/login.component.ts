@@ -1,7 +1,7 @@
 import { Component } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { AuthService } from '../../shared/services/auth.service';
 
 @Component({
@@ -44,15 +44,20 @@ export class LoginComponent {
 
   constructor(
     private authService: AuthService,
-    private router: Router
+    private router: Router,
+    private route: ActivatedRoute
   ) {}
 
   onSubmit(): void {
     this.errorMessage = '';
 
     this.authService.login(this.credentials).subscribe({
-      next: (response) => {
-        this.router.navigate(['/admin/dashboard']);
+      next: () => {
+        // 登入成功導回原本想去的頁面（guard/interceptor 以 returnUrl query 帶入）；
+        // 沒有則回預設 dashboard。只接受站內 / 開頭路徑，避免開放重導向。
+        const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
+        const target = returnUrl && returnUrl.startsWith('/') ? returnUrl : '/admin/dashboard';
+        this.router.navigateByUrl(target);
       },
       error: (err) => {
         // 429 = 嘗試過於頻繁（後端 LoginAttemptService 或 nginx limit_req 觸發）。
