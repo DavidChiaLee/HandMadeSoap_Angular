@@ -35,8 +35,8 @@ flowchart LR
         BE -->|JDBC| DB[(MySQL 8.0)]
         BK[backup 容器] -->|mysqldump 每 5 分鐘| DB
     end
-    BE -. . actuator/health/readiness .-> NG
-    DB -. .->|Flyway 遷移| SCHEMA[(schema 版本控管)]
+    BE -.->|actuator/health/readiness| NG
+    DB -.->|Flyway 遷移| SCHEMA[(schema 版本控管)]
 ```
 
 **設計要點**：單一入口（Nginx）對外；後端與 MySQL **不對外公網暴露連接埠**，僅在容器網路內通訊；
