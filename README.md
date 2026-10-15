@@ -206,7 +206,7 @@ handSoap/
 ## 📚 延伸閱讀
 
 - [維運手冊 OPERATIONS.md](OPERATIONS.md) — 部署、本機開發、資料庫連線、備份還原演練、TLS 上線、secrets 掃描
-- [程式碼審查記錄](docs/review/2026-09-29-full-code-review.md) — 從 Critical 到 Low 的問題盤點與修正決策
+
 
 ---
 
