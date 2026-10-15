@@ -177,6 +177,7 @@ describe('CategoriesComponent', () => {
     });
 
     it('刪除失敗時應彈出錯誤訊息', () => {
+      spyOn(console, 'error');
       spyOn(window, 'confirm').and.returnValue(true);
       spyOn(window, 'alert');
       api.delete.and.returnValue(throwError(() => ({ error: { message: '分類已被使用' } })));

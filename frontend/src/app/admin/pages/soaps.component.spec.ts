@@ -76,6 +76,7 @@ describe('SoapsComponent (admin)', () => {
     });
 
     it('油品載入失敗時應設為空陣列', () => {
+      spyOn(console, 'error');
       api.getList.and.returnValue(throwError(() => new Error('network')));
 
       component.ngOnInit();

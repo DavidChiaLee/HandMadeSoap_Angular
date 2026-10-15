@@ -74,6 +74,9 @@ export class EssentialOilDetailComponent implements OnInit {
     const id = this.route.snapshot.paramMap.get('id');
     if (id) {
       this.loadEssentialOil(id);
+    } else {
+      // 無 id 時不發請求，但維持載入中狀態（避免畫面空白）
+      this.isLoading = true;
     }
   }
 
