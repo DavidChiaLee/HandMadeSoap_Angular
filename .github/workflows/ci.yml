@@ -166,6 +166,6 @@ jobs:
       # 第一次跑沒 key 直接失敗會讓整個 CI 被誤判為不可用。排 Phase 2
       #（schedule 每週 + 產 report artifact 不擋 merge），見 dependabot.yml 註解。
       - name: Scan dependencies (OSV)
-        uses: google/osv-scanner-action@v1
+        uses: google/osv-scanner-action@v1.8.5
         with:
           scan-args: --recursive .
