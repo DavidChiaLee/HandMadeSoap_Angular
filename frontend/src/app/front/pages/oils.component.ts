@@ -1,6 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { HttpParams } from '@angular/common/http';
 import { ApiService } from '../../shared/services/api.service';
 import { FileUrlService, ImageRef } from '../../shared/services/file-url.service';
@@ -9,19 +10,51 @@ import { Oil } from '../../shared/models/oil.model';
 @Component({
   selector: 'app-oils',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, RouterLink, FormsModule],
   template: `
     <div class="max-w-7xl mx-auto px-4 py-8">
       <h1 class="text-3xl font-bold text-amber-900 mb-8">天然油品</h1>
 
-      <div *ngIf="isLoading" class="text-center py-12 text-gray-500">載入中...</div>
+      <!-- 前台搜尋視窗（按鈕觸發，與後台不同） -->
+      <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-6">
+        <div class="flex flex-col sm:flex-row gap-3">
+          <div class="relative flex-1">
+            <input
+              type="text"
+              [(ngModel)]="searchKeyword"
+              (keydown.enter)="doSearch()"
+              placeholder="輸入關鍵字搜尋油品名稱"
+              class="w-full border border-gray-300 rounded-lg pl-4 pr-9 py-2.5 text-sm focus:ring-2 focus:ring-amber-500 outline-none"
+            />
+            <button
+              *ngIf="searchKeyword"
+              type="button"
+              (click)="clearSearch()"
+              aria-label="清除關鍵字"
+              class="absolute right-2.5 top-1/2 -translate-y-1/2 leading-none text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              ×
+            </button>
+          </div>
+          <button (click)="doSearch()" class="btn-primary flex-shrink-0">
+            搜尋
+          </button>
+        </div>
+        <p *ngIf="searchKeyword && searchResultCount > 0" class="text-sm text-gray-500 mt-2 text-right">
+          共 {{ searchResultCount }} 筆符合結果
+        </p>
+      </div>
+
+      <div *ngIf="isLoading" class="text-center py-12 text-gray-500">{{ isSearching ? '搜尋中...' : '載入中...' }}</div>
 
       <div *ngIf="!isLoading && errorMessage" class="bg-red-50 border border-red-200 rounded-xl p-6 text-center mb-6">
         <p class="text-red-700 mb-4">{{ errorMessage }}</p>
         <button (click)="retry()" class="btn-primary">重試</button>
       </div>
 
-      <div *ngIf="!isLoading && !errorMessage && oils.length === 0" class="text-center py-12 text-gray-500">查無油品資料</div>
+      <div *ngIf="!isLoading && !errorMessage && oils.length === 0" class="text-center py-12 text-gray-500">
+        {{ searchKeyword ? '查無符合條件的油品' : '查無油品資料' }}
+      </div>
 
       <div *ngIf="!isLoading && !errorMessage && oils.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         <div *ngFor="let oil of oils" class="bg-white rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-shadow">
@@ -57,7 +90,10 @@ export class OilsComponent implements OnInit {
   pageSize = 8;
   totalPages = 0;
   isLoading = false;
+  isSearching = false;
   errorMessage: string | null = null;
+  searchKeyword: string = '';
+  searchResultCount = 0;
 
   constructor(
     private apiService: ApiService,
@@ -73,27 +109,49 @@ export class OilsComponent implements OnInit {
     this.loadOils();
   }
 
-  loadOils(p: number = this.page): void {
+  loadOils(p: number = this.page, keyword?: string): void {
     this.isLoading = true;
     this.errorMessage = null;
-    const params = new HttpParams()
+    let params = new HttpParams()
       .set('page', p)
       .set('size', this.pageSize)
       .set('sort', 'id,desc');
-    this.apiService.getPage<Oil>('oils', params).subscribe({
+    if (keyword) {
+      params = params.set('keyword', keyword);
+    }
+    const endpoint = keyword ? 'oils/search' : 'oils';
+    this.apiService.getPage<Oil>(endpoint, params).subscribe({
       next: (pg) => {
         this.isLoading = false;
+        this.isSearching = false;
         this.oils = pg.content;
         this.page = pg.number;
         this.totalPages = pg.totalPages;
+        this.searchResultCount = pg.totalElements;
       },
       error: (err) => {
         this.isLoading = false;
+        this.isSearching = false;
         this.oils = [];
         this.totalPages = 0;
-        this.errorMessage = ApiService.getErrorMessage(err, '載入油品失敗，請稍後再試');
+        this.searchResultCount = 0;
+        this.errorMessage = ApiService.getErrorMessage(err, keyword ? '搜尋失敗，請稍後再試' : '載入油品失敗，請稍後再試');
       }
     });
+  }
+
+  doSearch(): void {
+    this.isSearching = true;
+    this.errorMessage = null;
+    const keyword = this.searchKeyword.trim();
+    this.loadOils(0, keyword || undefined);  // 關鍵字為空時顯示全部油品
+  }
+
+  clearSearch(): void {
+    this.searchKeyword = '';
+    this.searchResultCount = 0;
+    this.isSearching = false;
+    this.loadOils(0);
   }
 
   retry(): void {

@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { FormsModule } from '@angular/forms';
 import { of, throwError } from 'rxjs';
 import { OilsComponent } from './oils.component';
 import { ApiService } from '../../shared/services/api.service';
@@ -13,7 +14,7 @@ describe('OilsComponent', () => {
   beforeEach(async () => {
     api = mockApiService();
     await TestBed.configureTestingModule({
-      imports: [OilsComponent],
+      imports: [OilsComponent, FormsModule],
       providers: [provideRouter([]), { provide: ApiService, useValue: api }]
     }).compileComponents();
 

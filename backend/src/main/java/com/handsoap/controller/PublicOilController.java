@@ -29,4 +29,12 @@ public class PublicOilController {
         OilResponse oil = oilService.getOilById(id);
         return ResponseEntity.ok(ApiResponse.success(oil));
     }
+
+    @GetMapping("/search")
+    public ResponseEntity<ApiResponse<Page<OilResponse>>> searchOils(
+            @RequestParam(value = "keyword", required = false) String keyword,
+            Pageable pageable) {
+        Page<OilResponse> oils = oilService.searchOilsByName(keyword, pageable);
+        return ResponseEntity.ok(ApiResponse.success(oils));
+    }
 }
