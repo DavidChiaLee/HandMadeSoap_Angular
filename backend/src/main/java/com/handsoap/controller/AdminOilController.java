@@ -28,9 +28,10 @@ public class AdminOilController {
     public ResponseEntity<ApiResponse<Page<OilResponse>>> getAllOils(
             @RequestParam(value = "keyword", required = false) String keyword,
             Pageable pageable) {
-        Page<OilResponse> oils = (keyword == null || keyword.isBlank())
+        String normalizedKeyword = (keyword == null || keyword.isBlank()) ? null : keyword;
+        Page<OilResponse> oils = (normalizedKeyword == null)
                 ? oilService.getAllOils(pageable)
-                : oilService.searchOilsByName(keyword, pageable);
+                : oilService.searchOilsByName(normalizedKeyword, pageable);
         return ResponseEntity.ok(ApiResponse.success(oils));
     }
 

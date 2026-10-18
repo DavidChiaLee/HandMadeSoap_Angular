@@ -34,7 +34,8 @@ public class PublicEssentialOilController {
     public ResponseEntity<ApiResponse<Page<EssentialOilResponse>>> searchEssentialOils(
             @RequestParam(value = "keyword", required = false) String keyword,
             Pageable pageable) {
-        Page<EssentialOilResponse> oils = essentialOilService.searchEssentialOils(keyword, pageable);
+        String normalizedKeyword = (keyword == null || keyword.isBlank()) ? null : keyword;
+        Page<EssentialOilResponse> oils = essentialOilService.searchEssentialOilsByName(normalizedKeyword, pageable);
         return ResponseEntity.ok(ApiResponse.success(oils));
     }
 }

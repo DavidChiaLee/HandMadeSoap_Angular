@@ -35,15 +35,18 @@ public class EssentialOilService {
     /**
      * 依名稱關鍵字搜尋；keyword 經 {@link KeywordSanitizer#normalize(String)} 正規化（review L3）。
      *
+     * <p>方法名為 {@code searchEssentialOilsByName}，與 {@code OilService.searchOilsByName}、
+     * {@code SoapService.searchSoapsByName} 對稱（review L62，2026-10-17）。</p>
+     *
      * <p>normalize 回 {@code null}（沒有可搜尋內容）時回空結果，不把 null 丟進
      * {@code CONCAT} —— 否則 MySQL 算出 {@code '%%'} 會變成「列出全部精油」。</p>
      */
-    public Page<EssentialOilResponse> searchEssentialOils(String keyword, Pageable pageable) {
+    public Page<EssentialOilResponse> searchEssentialOilsByName(String keyword, Pageable pageable) {
         String normalized = KeywordSanitizer.normalize(keyword);
         if (normalized == null) {
             return Page.empty(pageable);
         }
-        return essentialOilRepository.searchActiveEssentialOils(normalized, pageable)
+        return essentialOilRepository.searchActiveEssentialOilsByName(normalized, pageable)
                 .map(EssentialOilResponse::fromEntity);
     }
 

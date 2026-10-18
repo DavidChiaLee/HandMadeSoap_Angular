@@ -2,210 +2,29 @@ import { Component, OnInit } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { HttpParams } from '@angular/common/http';
-import { ApiService } from '../../shared/services/api.service';
-import { FileUrlService, ImageRef } from '../../shared/services/file-url.service';
-import { Oil } from '../../shared/models/oil.model';
+import { OilSearchListComponent, OilListConfig } from '../components/oil-search-list.component';
 
 @Component({
   selector: 'app-oils',
   standalone: true,
-  imports: [CommonModule, RouterLink, FormsModule],
-  template: `
-    <div class="max-w-7xl mx-auto px-4 py-8">
-      <h1 class="text-3xl font-bold text-amber-900 mb-8">天然油品</h1>
+  imports: [CommonModule, RouterLink, FormsModule, OilSearchListComponent],
+  template: `<app-oil-search-list [config]="oilConfig"></app-oil-search-list>`
 
-      <!-- 前台搜尋視窗（按鈕觸發，與後台不同） -->
-      <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-6">
-        <div class="flex flex-col sm:flex-row gap-3">
-          <div class="relative flex-1">
-            <input
-              type="text"
-              [(ngModel)]="searchKeyword"
-              (keydown.enter)="doSearch()"
-              placeholder="輸入關鍵字搜尋油品名稱"
-              class="w-full border border-gray-300 rounded-lg pl-4 pr-9 py-2.5 text-sm focus:ring-2 focus:ring-amber-500 outline-none"
-            />
-            <button
-              *ngIf="searchKeyword"
-              type="button"
-              (click)="clearSearch()"
-              aria-label="清除關鍵字"
-              class="absolute right-2.5 top-1/2 -translate-y-1/2 leading-none text-gray-400 hover:text-gray-600 transition-colors"
-            >
-              ×
-            </button>
-          </div>
-          <button (click)="doSearch()" class="btn-primary flex-shrink-0">
-            搜尋
-          </button>
-        </div>
-        <p *ngIf="searchKeyword && searchResultCount > 0" class="text-sm text-gray-500 mt-2 text-right">
-          共 {{ searchResultCount }} 筆符合結果
-        </p>
-      </div>
 
-      <div *ngIf="isLoading" class="text-center py-12 text-gray-500">{{ isSearching ? '搜尋中...' : '載入中...' }}</div>
 
-      <div *ngIf="!isLoading && errorMessage" class="bg-red-50 border border-red-200 rounded-xl p-6 text-center mb-6">
-        <p class="text-red-700 mb-4">{{ errorMessage }}</p>
-        <button (click)="retry()" class="btn-primary">重試</button>
-      </div>
-
-      <div *ngIf="!isLoading && !errorMessage && oils.length === 0" class="text-center py-12 text-gray-500">
-        {{ searchKeyword ? '查無符合條件的油品' : '查無油品資料' }}
-      </div>
-
-      <div *ngIf="!isLoading && !errorMessage && oils.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        <div *ngFor="let oil of oils" class="bg-white rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-shadow">
-          <div class="h-48 bg-amber-100 flex items-center justify-center">
-            <img [src]="fileUrl(oil.images)" [alt]="oil.name" class="w-full h-full object-cover" loading="lazy">
-          </div>
-          <div class="p-6">
-            <h3 class="text-xl font-bold text-amber-900 mb-2">{{ oil.name }}</h3>
-            <p class="text-gray-600 mb-4 line-clamp-3">{{ oil.benefits }}</p>
-            <a [routerLink]="['/oils', oil.id]" class="text-amber-700 hover:text-amber-900 font-medium">了解更多 →</a>
-          </div>
-        </div>
-      </div>
-
-      <div *ngIf="totalPages > 0" class="flex justify-center mt-10">
-        <div class="flex items-center gap-1.5">
-          <button (click)="firstPage()" [disabled]="page === 0" class="min-w-9 px-3 py-1.5 rounded-lg border text-sm transition-colors border-gray-200 text-gray-600 hover:bg-amber-50 hover:border-amber-300 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:border-gray-200">«</button>
-          <button (click)="prevPage()" [disabled]="page === 0" class="min-w-9 px-3 py-1.5 rounded-lg border text-sm transition-colors border-gray-200 text-gray-600 hover:bg-amber-50 hover:border-amber-300 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:border-gray-200">‹</button>
-          <ng-container *ngFor="let n of getPageNumbers()">
-            <button *ngIf="n !== '...'" (click)="onPageNumberClick(n)" [class.bg-amber-600]="n === page + 1" [class.text-white]="n === page + 1" [class.border-amber-600]="n === page + 1" [class.font-semibold]="n === page + 1" [class.shadow]="n === page + 1" class="min-w-9 px-3 py-1.5 rounded-lg border text-sm transition-colors border-gray-200 text-gray-600 hover:bg-amber-50 hover:border-amber-300">{{ n }}</button>
-            <span *ngIf="n === '...'" class="px-1 text-gray-400 select-none">…</span>
-          </ng-container>
-          <button (click)="nextPage()" [disabled]="page + 1 >= totalPages" class="min-w-9 px-3 py-1.5 rounded-lg border text-sm transition-colors border-gray-200 text-gray-600 hover:bg-amber-50 hover:border-amber-300 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:border-gray-200">›</button>
-          <button (click)="lastPage()" [disabled]="page + 1 >= totalPages" class="min-w-9 px-3 py-1.5 rounded-lg border text-sm transition-colors border-gray-200 text-gray-600 hover:bg-amber-50 hover:border-amber-300 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:border-gray-200">»</button>
-        </div>
-      </div>
-    </div>
-  `
 })
 export class OilsComponent implements OnInit {
-  oils: Oil[] = [];
-  page = 0;
-  pageSize = 8;
-  totalPages = 0;
-  isLoading = false;
-  isSearching = false;
-  errorMessage: string | null = null;
-  searchKeyword: string = '';
-  searchResultCount = 0;
+  readonly oilConfig: OilListConfig = {
+    title: '天然油品',
+    placeholder: '輸入關鍵字搜尋油品名稱',
+    emptyWithKeyword: '查無符合條件的油品',
+    emptyWithoutKeyword: '查無油品資料',
+    detailField: 'benefits',
+    routePrefix: '/oils',
+    baseEndpoint: 'oils'
+  };
 
-  constructor(
-    private apiService: ApiService,
-    private fileUrlService: FileUrlService
-  ) {}
+  constructor() {}
 
-  /** 圖片 URL 統一出口：無圖時退回本機佔位圖（見 FileUrlService） */
-  fileUrl(images?: ReadonlyArray<ImageRef> | null): string {
-    return this.fileUrlService.primaryUrl(images);
-  }
-
-  ngOnInit(): void {
-    this.loadOils();
-  }
-
-  loadOils(p: number = this.page, keyword?: string): void {
-    this.isLoading = true;
-    this.errorMessage = null;
-    let params = new HttpParams()
-      .set('page', p)
-      .set('size', this.pageSize)
-      .set('sort', 'id,desc');
-    if (keyword) {
-      params = params.set('keyword', keyword);
-    }
-    const endpoint = keyword ? 'oils/search' : 'oils';
-    this.apiService.getPage<Oil>(endpoint, params).subscribe({
-      next: (pg) => {
-        this.isLoading = false;
-        this.isSearching = false;
-        this.oils = pg.content;
-        this.page = pg.number;
-        this.totalPages = pg.totalPages;
-        this.searchResultCount = pg.totalElements;
-      },
-      error: (err) => {
-        this.isLoading = false;
-        this.isSearching = false;
-        this.oils = [];
-        this.totalPages = 0;
-        this.searchResultCount = 0;
-        this.errorMessage = ApiService.getErrorMessage(err, keyword ? '搜尋失敗，請稍後再試' : '載入油品失敗，請稍後再試');
-      }
-    });
-  }
-
-  doSearch(): void {
-    this.isSearching = true;
-    this.errorMessage = null;
-    const keyword = this.searchKeyword.trim();
-    this.loadOils(0, keyword || undefined);  // 關鍵字為空時顯示全部油品
-  }
-
-  clearSearch(): void {
-    this.searchKeyword = '';
-    this.searchResultCount = 0;
-    this.isSearching = false;
-    this.loadOils(0);
-  }
-
-  retry(): void {
-    this.loadOils(this.page);
-  }
-
-  goToPage(p: number): void {
-    if (p >= 0 && p < this.totalPages && p !== this.page) {
-      this.loadOils(p);
-    }
-  }
-
-  firstPage(): void {
-    this.goToPage(0);
-  }
-
-  prevPage(): void {
-    this.goToPage(this.page - 1);
-  }
-
-  nextPage(): void {
-    this.goToPage(this.page + 1);
-  }
-
-  lastPage(): void {
-    this.goToPage(this.totalPages - 1);
-  }
-
-  getPageNumbers(): (number | string)[] {
-    const total = this.totalPages;
-    if (total <= 0) {
-      return [];
-    }
-    const cur = this.page + 1;
-    if (total <= 7) {
-      return Array.from({ length: total }, (_, i) => i + 1);
-    }
-    const pages = new Set<number>([1, 2, cur - 1, cur, cur + 1, total - 1, total]);
-    const sorted = [...pages].filter(n => n >= 1 && n <= total).sort((a, b) => a - b);
-    const result: (number | string)[] = [];
-    let prev = 0;
-    for (const n of sorted) {
-      if (prev && n - prev > 1) {
-        result.push('...');
-      }
-      result.push(n);
-      prev = n;
-    }
-    return result;
-  }
-
-  onPageNumberClick(n: number | string): void {
-    if (typeof n === 'number') {
-      this.goToPage(n - 1);
-    }
-  }
+  ngOnInit(): void {}
 }

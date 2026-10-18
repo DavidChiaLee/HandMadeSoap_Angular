@@ -48,12 +48,12 @@ class EssentialOilServiceTest {
     @DisplayName("搜尋時應把去除前後空白的關鍵字傳給 repository，並回傳映射後的分頁結果")
     void shouldSearchByNameWithTrimmedKeyword() {
         Pageable pageable = PageRequest.of(0, 5);
-        given(essentialOilRepository.searchActiveEssentialOils("薰衣草", pageable))
+        given(essentialOilRepository.searchActiveEssentialOilsByName("薰衣草", pageable))
                 .willReturn(pageOf(essentialOil(1L, "薰衣草精油")));
 
-        Page<?> result = service.searchEssentialOils("  薰衣草  ", pageable);
+        Page<?> result = service.searchEssentialOilsByName("  薰衣草  ", pageable);
 
-        then(essentialOilRepository).should().searchActiveEssentialOils("薰衣草", pageable);
+        then(essentialOilRepository).should().searchActiveEssentialOilsByName("薰衣草", pageable);
         assertThat(result.getTotalElements()).isEqualTo(1);
         assertThat(result.getContent()).hasSize(1);
     }
@@ -62,22 +62,22 @@ class EssentialOilServiceTest {
     @DisplayName("搜尋無結果時應回傳空的分頁")
     void shouldReturnEmptyPageWhenNoMatch() {
         Pageable pageable = PageRequest.of(0, 5);
-        given(essentialOilRepository.searchActiveEssentialOils("不存在的精油", pageable))
+        given(essentialOilRepository.searchActiveEssentialOilsByName("不存在的精油", pageable))
                 .willReturn(new PageImpl<>(List.of()));
 
-        assertThat(service.searchEssentialOils("不存在的精油", pageable).getContent()).isEmpty();
+        assertThat(service.searchEssentialOilsByName("不存在的精油", pageable).getContent()).isEmpty();
     }
 
     @Test
     @DisplayName("keyword 的 % 與 _ 應被跳釋後才進 JPQL（review L3）")
     void shouldEscapeLikeMetacharactersBeforeQuery() {
         Pageable pageable = PageRequest.of(0, 5);
-        given(essentialOilRepository.searchActiveEssentialOils("100\\%", pageable))
+        given(essentialOilRepository.searchActiveEssentialOilsByName("100\\%", pageable))
                 .willReturn(new PageImpl<>(List.of()));
 
-        service.searchEssentialOils("100%", pageable);
+        service.searchEssentialOilsByName("100%", pageable);
 
-        then(essentialOilRepository).should().searchActiveEssentialOils("100\\%", pageable);
+        then(essentialOilRepository).should().searchActiveEssentialOilsByName("100\\%", pageable);
     }
 
     @Test
@@ -85,7 +85,7 @@ class EssentialOilServiceTest {
     void shouldReturnEmptyPageWithoutQueryingForBlankKeyword() {
         Pageable pageable = PageRequest.of(0, 5);
 
-        assertThat(service.searchEssentialOils("　", pageable).getContent()).isEmpty();
+        assertThat(service.searchEssentialOilsByName("　", pageable).getContent()).isEmpty();
 
         // 全形空格 U+3000 也要被視為空白（strip() 而非 trim() 的理由）
         then(essentialOilRepository).shouldHaveNoInteractions();

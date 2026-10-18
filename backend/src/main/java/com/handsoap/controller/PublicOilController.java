@@ -34,7 +34,8 @@ public class PublicOilController {
     public ResponseEntity<ApiResponse<Page<OilResponse>>> searchOils(
             @RequestParam(value = "keyword", required = false) String keyword,
             Pageable pageable) {
-        Page<OilResponse> oils = oilService.searchOilsByName(keyword, pageable);
+        String normalizedKeyword = (keyword == null || keyword.isBlank()) ? null : keyword;
+        Page<OilResponse> oils = oilService.searchOilsByName(normalizedKeyword, pageable);
         return ResponseEntity.ok(ApiResponse.success(oils));
     }
 }

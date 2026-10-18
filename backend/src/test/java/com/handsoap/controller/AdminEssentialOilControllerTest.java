@@ -57,7 +57,7 @@ class AdminEssentialOilControllerTest {
                 .andExpect(jsonPath("$.data.content[0].name").value("薰衣草精油"));
 
         verify(essentialOilService).getAllEssentialOils(any());
-        verify(essentialOilService, never()).searchEssentialOils(anyString(), any());
+        verify(essentialOilService, never()).searchEssentialOilsByName(anyString(), any());
     }
 
     @Test
@@ -70,14 +70,14 @@ class AdminEssentialOilControllerTest {
         mockMvc.perform(get("/api/v1/admin/essential-oils").param("keyword", "   "))
                 .andExpect(status().isOk());
 
-        verify(essentialOilService, never()).searchEssentialOils(anyString(), any());
+        verify(essentialOilService, never()).searchEssentialOilsByName(anyString(), any());
     }
 
     @Test
-    @DisplayName("帶 keyword 時應呼叫 searchEssentialOils 並回傳結果")
+    @DisplayName("帶 keyword 時應呼叫 searchEssentialOilsByName 並回傳結果")
     @WithMockUser(roles = "ADMIN")
     void shouldSearchWhenKeywordPresent() throws Exception {
-        given(essentialOilService.searchEssentialOils(eq("薰衣草"), any()))
+        given(essentialOilService.searchEssentialOilsByName(eq("薰衣草"), any()))
                 .willReturn(pageOf(oil(2L, "薰衣草精油")));
 
         mockMvc.perform(get("/api/v1/admin/essential-oils").param("keyword", "薰衣草"))
@@ -85,7 +85,7 @@ class AdminEssentialOilControllerTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.content[0].name").value("薰衣草精油"));
 
-        verify(essentialOilService).searchEssentialOils(eq("薰衣草"), any());
+        verify(essentialOilService).searchEssentialOilsByName(eq("薰衣草"), any());
         verify(essentialOilService, never()).getAllEssentialOils(any());
     }
 
@@ -93,7 +93,7 @@ class AdminEssentialOilControllerTest {
     @DisplayName("搜尋無結果時應回傳空內容")
     @WithMockUser(roles = "ADMIN")
     void shouldReturnEmptyContentWhenNoMatch() throws Exception {
-        given(essentialOilService.searchEssentialOils(eq("zzz"), any()))
+        given(essentialOilService.searchEssentialOilsByName(eq("zzz"), any()))
                 .willReturn(new PageImpl<>(List.of()));
 
         mockMvc.perform(get("/api/v1/admin/essential-oils").param("keyword", "zzz"))
