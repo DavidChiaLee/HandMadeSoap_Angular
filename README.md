@@ -1,4 +1,4 @@
-# 🧼 手工皂電商前後台系統（handSoap）
+# 🧼 手工皂電商前後台系統（HandSoap）
 
 > 單一 Angular 前台 + 後台、Spring Boot RESTful API、MySQL，全站以 Docker Compose 一鍵啟動。
 > 從需求到部署、從資安到可觀測性，皆為獨立設計與實作的個人作品。
