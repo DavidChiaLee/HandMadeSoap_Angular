@@ -182,7 +182,7 @@ docker compose logs -f backend   # 看到「[bootstrap] 已建立首位管理員
 
 ```
 GET  /api/v1/categories
-GET  /api/v1/soaps                # 支援 keyword、categoryId、分頁/排序
+GET  /api/v1/soaps               
 GET  /api/v1/soaps/{id}
 GET  /api/v1/soaps/featured
 GET  /api/v1/oils
