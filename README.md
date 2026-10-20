@@ -94,8 +94,7 @@ sequenceDiagram
 - **完整測試**：後端 39 個測試類（Controller/Service/Security/例外）+ 前端 354 個 spec。
 - **CI/CD**：GitHub Actions 平行跑 backend（`mvn verify`）／frontend（Karma + production build）、
   compose 煙霧測試、secrets 掃描、OSV 依賴掃描；Dependabot 每週升級 npm/maven。
-- **自我 Code Review 閉環**：從 Critical→Low 逐項審查與修正，並記錄每項取捨——見
-  [`docs/review/`](docs/review/2026-09-29-full-code-review.md)。
+- **自我 Code Review 閉環**：從 Critical→Low 逐項審查與修正，並記錄每項取捨
 
 ## 🛠️ 技術棧
 
