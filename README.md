@@ -19,10 +19,14 @@
   ![前台首頁](docs/images/home.png)
   ![後台總覽](docs/images/dashboard.gif)
 -->
-[前台首頁](docs/images/home.png)
+- [前台首頁](docs/images/home.png)
 [前台手工皂頁面](docs/images/handMadeSoapPage.png)
 [前台油品頁面](docs/images/oilInfoPage.png)
-> 尚未附圖。前台於 `http://localhost`、後台於 `http://localhost/admin/login`。
+[前台精油頁面](docs/images/essentialOilInfoPage.png)
+[前台關於我們頁面](docs/images/aboutUsPage.png)
+[前台聯絡我們頁面](docs/images/contactUsPage.png)
+-  [後台登入頁面](docs/images/backendLogIn.png)
+> 前台於 `http://localhost`、後台於 `http://localhost/admin/login`。
 
 ---
 
